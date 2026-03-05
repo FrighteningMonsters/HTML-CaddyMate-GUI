@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Categories - CaddyMate</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="categories.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-button" onclick="window.location.href='home.html'">
+                <span>← Back</span>
+            </button>
+            <h1>Browse Categories</h1>
+        </div>
+        <div class="categories-grid" id="categoriesContainer">
+            <div class="loading">Loading categories...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+
+        async function loadCategories() {
+            const container = document.getElementById('categoriesContainer');
+            
+            try {
+                const response = await fetch(`${API_URL}/categories`);
+                const categories = await response.json();
+                
+                if (categories.length === 0) {
+                    container.innerHTML = '<div class="no-data">No categories found</div>';
+                    return;
+                }
+                
+                container.innerHTML = categories.map(category => `
+                    <button class="category-button" onclick="selectCategory(${category.id}, '${category.name}')">
+                        <span>${getCategoryIcon(category.name)} ${category.name}</span>
+                    </button>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading categories:', error);
+                container.innerHTML = '<div class="error">Failed to load categories. Please try again.</div>';
+            }
+        }
+
+        function getCategoryIcon(categoryName) {
+            const icons = {
+                'Fruit & Vegetables': '🍎',
+                'Bakery': '🥖',
+                'Dairy & Eggs': '🥚',
+                'Meat & Fish': '🥩',
+                'Frozen Foods': '❄️',
+                'Pantry / Dry Goods': '🥫',
+                'Snacks & Sweets': '🍪',
+                'Drinks': '🥤',
+                'Alcohol': '🍷',
+                'Household': '🧹',
+                'Health & Pharmacy': '💊',
+                'Personal Care': '🧴',
+                'Baby & Toddler': '👶',
+                'Pet Care': '🐾',
+                'Deli & Prepared Foods': '🥪'
+            };
+            return icons[categoryName] || '📦';
+        }
+
+        function selectCategory(categoryId, categoryName) {
+            // Navigate to items page with category ID
+            window.location.href = `items.html?category=${categoryId}&name=${encodeURIComponent(categoryName)}`;
+        }
+
+        // Load categories when page loads
+        window.addEventListener('DOMContentLoaded', loadCategories);
+    </script>
+</body>
+</html>

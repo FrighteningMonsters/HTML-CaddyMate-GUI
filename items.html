@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Items - CaddyMate</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="items.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-button" onclick="window.location.href='browse-categories.html'">
+                <span>← Back</span>
+            </button>
+            <h1 id="categoryTitle">Items</h1>
+        </div>
+        <div class="items-grid" id="itemsContainer">
+            <div class="loading">Loading items...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        
+        // Get category ID and name from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const categoryId = urlParams.get('category');
+        const categoryName = urlParams.get('name');
+
+        // Update page title
+        if (categoryName) {
+            const emoji = getCategoryIcon(categoryName);
+            document.getElementById('categoryTitle').textContent = `${emoji} ${categoryName}`;
+        }
+
+        function getCategoryIcon(categoryName) {
+            const icons = {
+                'Fruit & Vegetables': '🍎',
+                'Bakery': '🥖',
+                'Dairy & Eggs': '🥚',
+                'Meat & Fish': '🥩',
+                'Frozen Foods': '❄️',
+                'Pantry / Dry Goods': '🥫',
+                'Snacks & Sweets': '🍪',
+                'Drinks': '🥤',
+                'Alcohol': '🍷',
+                'Household': '🧹',
+                'Health & Pharmacy': '💊',
+                'Personal Care': '🧴',
+                'Baby & Toddler': '👶',
+                'Pet Care': '🐾',
+                'Deli & Prepared Foods': '🥪'
+            };
+            return icons[categoryName] || '📦';
+        }
+
+        async function loadItems() {
+            const container = document.getElementById('itemsContainer');
+            
+            if (!categoryId) {
+                container.innerHTML = '<div class="error">No category selected</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/items/${categoryId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch items');
+                }
+
+                const items = await response.json();
+
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="no-data">No items in this category</div>';
+                    return;
+                }
+
+                // Create item buttons
+                container.innerHTML = items.map(item => `
+                    <div class="item-card">
+                        <div class="item-name">${item.name}</div>
+                        ${item.aisle ? `<div class="item-aisle">Aisle ${item.aisle}</div>` : ''}
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading items:', error);
+                container.innerHTML = '<div class="error">Failed to load items. Please try again.</div>';
+            }
+        }
+
+        // Load items when page loads
+        loadItems();
+    </script>
+</body>
+</html>
