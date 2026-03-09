@@ -95,6 +95,44 @@
         transform-origin: 50% 100%;
         pointer-events: none;
       }
+
+      #arrivalOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        background: rgba(15, 23, 42, 0.9);
+      }
+
+      #arrivalOverlay.visible {
+        display: flex;
+      }
+
+      .arrival-card {
+        width: min(90vw, 560px);
+        border-radius: 18px;
+        background: #f8fafc;
+        color: #0f172a;
+        text-align: center;
+        padding: 30px 24px;
+        box-shadow: 0 30px 60px rgba(15, 23, 42, 0.45);
+      }
+
+      .arrival-title {
+        font-size: clamp(30px, 4.8vw, 44px);
+        font-weight: 700;
+        margin-bottom: 10px;
+        color: #0b3b8a;
+      }
+
+      #arrivalMessage {
+        font-size: clamp(22px, 3.5vw, 32px);
+        font-weight: 600;
+        line-height: 1.3;
+      }
     </style>
   </head>
 
@@ -117,12 +155,21 @@
       </div>
     </div>
 
+    <div id="arrivalOverlay" role="alert" aria-live="assertive" aria-hidden="true">
+      <div class="arrival-card">
+        <div class="arrival-title">Item Found</div>
+        <div id="arrivalMessage"></div>
+      </div>
+    </div>
+
     <script>
       const API_URL = "http://localhost:5000/api";
       const container = document.getElementById("mapWrapper");
       const userMarker = document.getElementById("userMarker");
       const userArrow = document.getElementById("userArrow");
       const targetBanner = document.getElementById("targetBanner");
+      const arrivalOverlay = document.getElementById("arrivalOverlay");
+      const arrivalMessage = document.getElementById("arrivalMessage");
       const queryParams = new URLSearchParams(window.location.search);
 
       function normalizeAisleLabel(value) {
@@ -205,10 +252,14 @@
       let lastRouteRequestAt = 0;
       let isRequestingRoute = false;
       let currentAbortController = null;
+      let hasReachedTarget = false;
+      let gameLoopId = null;
 
       let cameraScale = 1;
       const FOLLOW_ZOOM_FACTOR = 3.0;
       const ROUTE_UPDATE_INTERVAL_MS = 33;
+      const ARRIVAL_THRESHOLD_METERS = 1.2;
+      const EXIT_MAP_DELAY_MS = 2200;
 
       const stage = new Konva.Stage({
         container: "mapStage",
@@ -234,6 +285,60 @@
           x: (pose.xPercent / 100) * m(WORLD_WIDTH),
           y: (pose.yPercent / 100) * m(WORLD_HEIGHT),
         };
+      }
+
+      function exitMapView() {
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+
+        if (document.referrer) {
+          window.location.href = document.referrer;
+          return;
+        }
+
+        window.location.href = "items.html";
+      }
+
+      function checkTargetArrival() {
+        if (hasReachedTarget || !targetWorldPoint) {
+          return false;
+        }
+
+        const user = getUserWorldPosition();
+        const dx = targetWorldPoint.x - user.x;
+        const dy = targetWorldPoint.y - user.y;
+        const distanceMeters = Math.hypot(dx, dy) / PIXELS_PER_METER;
+
+        if (distanceMeters > ARRIVAL_THRESHOLD_METERS) {
+          return false;
+        }
+
+        hasReachedTarget = true;
+
+        const targetName =
+          selectedItemName || formatAisleDisplay(selectedAisleLabel) || "the selected item";
+
+        targetBanner.textContent = `Arrived at ${targetName}`;
+        arrivalMessage.textContent = `You are next to ${targetName}`;
+        arrivalOverlay.classList.add("visible");
+        arrivalOverlay.setAttribute("aria-hidden", "false");
+        clearRouteLine();
+
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
+
+        if (typeof gameLoopId === "number") {
+          clearInterval(gameLoopId);
+        }
+
+        window.setTimeout(() => {
+          exitMapView();
+        }, EXIT_MAP_DELAY_MS);
+
+        return true;
       }
 
       function centerCameraOn(worldX, worldY) {
@@ -388,6 +493,10 @@
       }
 
       async function requestAndRenderPath() {
+        if (hasReachedTarget) {
+          return;
+        }
+
         if (!targetWorldPoint) {
           clearRouteLine();
           isRequestingRoute = false;
@@ -485,6 +594,7 @@
         targetLabel = null;
         routeLine = null;
         targetWorldPoint = null;
+        hasReachedTarget = false;
 
         // Compute bounds of all shelves 
         let minX = Infinity;
@@ -597,6 +707,10 @@
         updateFollowCamera();
         syncUser();
 
+        if (checkTargetArrival()) {
+          return;
+        }
+
         requestAndRenderPath();
       }
 
@@ -624,7 +738,7 @@
       const ROTATION_SPEED = 3; // degrees per frame
       const MOVE_SPEED = 0.2; // percent per frame
 
-      setInterval(() => {
+      gameLoopId = setInterval(() => {
         let moved = false;
 
         // Turning
@@ -650,6 +764,10 @@
         if (moved) {
           updateFollowCamera();
           syncUser();
+
+          if (checkTargetArrival()) {
+            return;
+          }
 
           const now = Date.now();
           if (
