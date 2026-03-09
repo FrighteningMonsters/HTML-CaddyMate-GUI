@@ -237,21 +237,36 @@ def find_path(start, end, grid_resolution=1.0):
     if not start_cell or not end_cell:
         return None
 
+    # A* with direction tracking to minimize turns
     open_heap = []
-    heapq.heappush(open_heap, (0, start_cell))
-    came_from = {}
-    g_score = {start_cell: 0}
+    # State: (cell, direction) where direction is None for start or (dx, dy)
+    heapq.heappush(open_heap, (0, start_cell, None))
+    
+    came_from = {}  # (cell, direction) -> (prev_cell, prev_direction)
+    g_score = {}  # (cell, direction) -> cost
+    
+    # Start has no direction, cost 0
+    g_score[(start_cell, None)] = 0
 
     def heuristic(cell):
         return abs(cell[0] - end_cell[0]) + abs(cell[1] - end_cell[1])
 
     neighbors = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    TURN_PENALTY = 0.5  # Cost penalty for changing direction
 
     while open_heap:
-        _, current = heapq.heappop(open_heap)
+        _, current, current_dir = heapq.heappop(open_heap)
 
         if current == end_cell:
-            cell_path = reconstruct_cell_path(came_from, end_cell)
+            # Found the goal - reconstruct path
+            cell_path = []
+            state = (current, current_dir)
+            while state in came_from:
+                cell_path.append(state[0])
+                state = came_from[state]
+            cell_path.append(start_cell)
+            cell_path.reverse()
+
             points = [cell_center(cx, cy, grid_resolution) for cx, cy in cell_path]
 
             if points:
@@ -274,14 +289,25 @@ def find_path(start, end, grid_resolution=1.0):
             if neighbor in blocked_cells:
                 continue
 
-            tentative_g = g_score[current] + 1
-            if tentative_g >= g_score.get(neighbor, float('inf')):
-                continue
+            # Base movement cost
+            move_cost = 1.0
+            
+            # Add turn penalty if changing direction
+            if current_dir is not None and current_dir != (dx, dy):
+                move_cost += TURN_PENALTY
 
-            came_from[neighbor] = current
-            g_score[neighbor] = tentative_g
-            f_score = tentative_g + heuristic(neighbor)
-            heapq.heappush(open_heap, (f_score, neighbor))
+            current_state = (current, current_dir)
+            neighbor_state = (neighbor, (dx, dy))
+            
+            tentative_g = g_score.get(current_state, float('inf')) + move_cost
+            
+            if tentative_g < g_score.get(neighbor_state, float('inf')):
+                came_from[neighbor_state] = current_state
+                g_score[neighbor_state] = tentative_g
+                f_score = tentative_g + heuristic(neighbor)
+                heapq.heappush(open_heap, (f_score, neighbor, (dx, dy)))
+
+    return None
 
     return None
 
