@@ -203,6 +203,7 @@
       let routeLine = null;
       let activeRouteRequestId = 0;
       let lastRouteRequestAt = 0;
+      let isRequestingRoute = false;
       let hasInitialTargetFocus = false;
 
       let cameraScale = 1;
@@ -389,9 +390,15 @@
       async function requestAndRenderPath() {
         if (!targetWorldPoint) {
           clearRouteLine();
+          isRequestingRoute = false;
           return;
         }
 
+        if (isRequestingRoute) {
+          return; // Skip if a request is already in progress
+        }
+
+        isRequestingRoute = true;
         const user = getUserWorldPosition();
         const requestId = ++activeRouteRequestId;
 
@@ -415,18 +422,27 @@
           });
 
           if (requestId !== activeRouteRequestId) {
+            isRequestingRoute = false;
             return;
           }
 
           if (!response.ok) {
+            console.error(`Path request failed: ${response.status} ${response.statusText}`);
             clearRouteLine();
+            isRequestingRoute = false;
+            lastRouteRequestAt = Date.now(); // Update timer even on failure
             return;
           }
 
           const result = await response.json();
           drawRouteLine(result.points || []);
-        } catch (_error) {
+          lastRouteRequestAt = Date.now(); // Update timer after successful request
+          isRequestingRoute = false;
+        } catch (error) {
+          console.error('Path request error:', error);
           clearRouteLine();
+          isRequestingRoute = false;
+          lastRouteRequestAt = Date.now(); // Update timer even on error
         }
       }
 
@@ -622,7 +638,6 @@
             targetWorldPoint &&
             now - lastRouteRequestAt >= ROUTE_UPDATE_INTERVAL_MS
           ) {
-            lastRouteRequestAt = now;
             requestAndRenderPath();
           }
         }
