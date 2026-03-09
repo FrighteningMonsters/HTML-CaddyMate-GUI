@@ -12,6 +12,17 @@ CORS(app)
 DB_PATH = 'data/caddymate_store.db'
 LAYOUT_PATH = 'store_layout.json'
 
+# Cache for pathfinding grid
+_grid_cache = {
+    'blocked_cells': None,
+    'columns': None,
+    'rows': None,
+    'world_width': None,
+    'world_height': None,
+    'grid_resolution': None,
+    'shelves': None,
+}
+
 
 def parse_point(raw_value):
     if not isinstance(raw_value, dict):
@@ -170,16 +181,12 @@ def simplify_points(points):
     return simplified
 
 
-def find_path(start, end, grid_resolution=0.5):
+def initialize_grid_cache(grid_resolution=1.0):
+    """Pre-compute and cache the pathfinding grid to avoid recalculating on every request."""
     layout = load_normalized_layout()
     world_width = layout['world_width']
     world_height = layout['world_height']
     shelves = layout['shelves']
-
-    if not (0 <= start['x'] <= world_width and 0 <= start['y'] <= world_height):
-        return None
-    if not (0 <= end['x'] <= world_width and 0 <= end['y'] <= world_height):
-        return None
 
     columns = max(1, int(world_width / grid_resolution) + 1)
     rows = max(1, int(world_height / grid_resolution) + 1)
@@ -193,6 +200,33 @@ def find_path(start, end, grid_resolution=0.5):
                 if point_in_polygon(center_x, center_y, polygon):
                     blocked_cells.add((x, y))
                     break
+
+    _grid_cache['blocked_cells'] = blocked_cells
+    _grid_cache['columns'] = columns
+    _grid_cache['rows'] = rows
+    _grid_cache['world_width'] = world_width
+    _grid_cache['world_height'] = world_height
+    _grid_cache['grid_resolution'] = grid_resolution
+    _grid_cache['shelves'] = shelves
+
+    print(f"Grid cache initialized: {columns}x{rows} cells, {len(blocked_cells)} blocked")
+
+
+def find_path(start, end, grid_resolution=1.0):
+    # Initialize cache if not already done
+    if _grid_cache['blocked_cells'] is None or _grid_cache['grid_resolution'] != grid_resolution:
+        initialize_grid_cache(grid_resolution)
+
+    world_width = _grid_cache['world_width']
+    world_height = _grid_cache['world_height']
+    columns = _grid_cache['columns']
+    rows = _grid_cache['rows']
+    blocked_cells = _grid_cache['blocked_cells']
+
+    if not (0 <= start['x'] <= world_width and 0 <= start['y'] <= world_height):
+        return None
+    if not (0 <= end['x'] <= world_width and 0 <= end['y'] <= world_height):
+        return None
 
     start_cell = point_to_cell(start, grid_resolution)
     end_cell = point_to_cell(end, grid_resolution)
@@ -292,7 +326,7 @@ def get_path():
     if not start or not end:
         return jsonify({'error': 'Invalid start/end payload. Expected {start:{x,y}, end:{x,y}}'}), 400
 
-    path_result = find_path(start, end, grid_resolution=0.5)
+    path_result = find_path(start, end, grid_resolution=1.0)
     if not path_result:
         return jsonify({'error': 'No path found'}), 404
 
@@ -306,4 +340,7 @@ def get_path():
     })
 
 if __name__ == '__main__':
+    print("Initializing pathfinding grid cache...")
+    initialize_grid_cache(grid_resolution=1.0)
+    print("Starting server...")
     app.run(debug=False, host='0.0.0.0', port=5000)
