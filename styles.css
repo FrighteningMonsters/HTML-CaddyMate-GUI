@@ -1,0 +1,117 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', 'Noto Sans', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', 'EmojiSymbols';
+    background: #e9eef5;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    padding: 12px;
+}
+
+.container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px;
+    background: #ffffff;
+    border-radius: 16px;
+    border: 1px solid #d2dbe8;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    width: 800px;
+    height: 455px;
+}
+
+.logo-area {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+}
+
+.logo-area img {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+}
+
+h1 {
+    color: #1f2937;
+    font-size: 36px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.button-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    flex: 1;
+    justify-content: center;
+}
+
+button {
+    border: 2px solid #24b4fb;
+    background-color: #0077ff;
+    border-radius: 0.9em;
+    cursor: pointer;
+    padding: 1em 1.3em;
+    transition: background-color 0.12s linear, border-color 0.12s linear;
+    font-size: 40px;
+    width: 100%;
+    min-height: 108px;
+    line-height: 1;
+}
+
+button span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    color: #fff;
+    font-weight: 600;
+    line-height: 1;
+}
+
+button .icon {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.back-button {
+    background-color: #6b7280;
+    border: 2px solid #6b7280;
+    height: 45px;
+    min-height: 45px;
+    font-size: 16px;
+    padding: 0 20px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    width: auto;
+}
+
+.back-button:hover {
+    background-color: #4b5563;
+    border-color: #4b5563;
+}
+
+button:hover {
+    background-color: #005ae2;
+    border-color: #1fa6e7;
+}
+
+button:active {
+    background-color: #0052cc;
+}

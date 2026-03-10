@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Categories - CaddyMate</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="categories.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-button" onclick="window.location.href='home.html'">
+                <span>← Back</span>
+            </button>
+            <h1>Browse Categories</h1>
+        </div>
+        <div class="categories-grid" id="categoriesContainer">
+            <div class="loading">Loading categories...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        const CATEGORY_CACHE_KEY = 'categories-cache-v1';
+        const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+        function readCache(key) {
+            const raw = sessionStorage.getItem(key);
+            if (!raw) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(raw);
+            } catch (_error) {
+                return null;
+            }
+        }
+
+        function writeCache(key, value) {
+            sessionStorage.setItem(key, JSON.stringify({
+                savedAt: Date.now(),
+                value
+            }));
+        }
+
+        function getCategoryIcon(categoryName) {
+            const icons = {
+                'Fruit & Vegetables': '🍎',
+                'Bakery': '🥖',
+                'Dairy & Eggs': '🥚',
+                'Meat & Fish': '🥩',
+                'Frozen Foods': '❄️',
+                'Pantry / Dry Goods': '🥫',
+                'Snacks & Sweets': '🍪',
+                'Drinks': '🥤',
+                'Alcohol': '🍷',
+                'Household': '🧹',
+                'Health & Pharmacy': '💊',
+                'Personal Care': '🧴',
+                'Baby & Toddler': '👶',
+                'Pet Care': '🐾',
+                'Deli & Prepared Foods': '🥪'
+            };
+            return icons[categoryName] || '📦';
+        }
+
+        function renderCategories(container, categories) {
+            if (!Array.isArray(categories) || categories.length === 0) {
+                container.innerHTML = '<div class="no-data">No categories found</div>';
+                return;
+            }
+
+            container.innerHTML = categories.map(category => `
+                <button class="category-button" data-category-id="${category.id}" data-category-name="${encodeURIComponent(category.name)}">
+                    <span class="category-icon">${getCategoryIcon(category.name)}</span>
+                    <span class="category-text">${category.name}</span>
+                </button>
+            `).join('');
+        }
+
+        async function loadCategories() {
+            const container = document.getElementById('categoriesContainer');
+            const cached = readCache(CATEGORY_CACHE_KEY);
+
+            if (cached?.value) {
+                renderCategories(container, cached.value);
+                if (Date.now() - cached.savedAt < CATEGORY_CACHE_TTL_MS) {
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/categories`, { cache: 'force-cache' });
+                const categories = await response.json();
+
+                writeCache(CATEGORY_CACHE_KEY, categories);
+                renderCategories(container, categories);
+            } catch (error) {
+                console.error('Error loading categories:', error);
+                if (!cached?.value) {
+                    container.innerHTML = '<div class="error">Failed to load categories. Please try again.</div>';
+                }
+            }
+        }
+
+        function selectCategory(categoryId, categoryName) {
+            window.location.href = `items.html?category=${categoryId}&name=${encodeURIComponent(categoryName)}`;
+        }
+
+        document.getElementById('categoriesContainer').addEventListener('click', (event) => {
+            const button = event.target.closest('.category-button');
+            if (!button) {
+                return;
+            }
+
+            const categoryId = Number(button.dataset.categoryId || 0);
+            const categoryName = decodeURIComponent(button.dataset.categoryName || '');
+
+            if (categoryId) {
+                selectCategory(categoryId, categoryName);
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', loadCategories);
+    </script>
+</body>
+</html>

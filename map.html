@@ -1,0 +1,1143 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supermarket Map</title>
+    <link rel="stylesheet" href="styles.css" />
+
+    <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+
+    <style>
+      .container {
+        gap: 16px;
+        padding: 20px;
+        justify-content: flex-start;
+        align-items: stretch;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        min-height: 45px;
+        flex-shrink: 0;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .header-buttons {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      .header-buttons .back-button {
+        height: 36px;
+        min-height: 36px;
+        padding: 0 14px;
+        font-size: 14px;
+      }
+
+      #rosStatus {
+        flex-shrink: 0;
+        min-width: 150px;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #64748b;
+        background: rgba(100, 116, 139, 0.12);
+        border: 1px solid rgba(100, 116, 139, 0.25);
+        border-radius: 6px;
+        white-space: nowrap;
+        text-align: center;
+        box-sizing: border-box;
+      }
+
+      #navigateBtn {
+        flex-shrink: 0;
+        width: auto;
+        height: 36px;
+        min-height: 36px;
+        padding: 0 10px;
+        font-size: 13px;
+        border-radius: 6px;
+        background: #22c55e;
+        border: 2px solid #16a34a;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .map-panel {
+        width: 100%;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      #targetBanner {
+        flex: 0 0 auto;
+        width: fit-content;
+        max-width: 100%;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        background: rgba(36, 180, 251, 0.15);
+        border: 1px solid rgba(36, 180, 251, 0.35);
+        border-radius: 6px;
+        color: #1f2937;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 0 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #mapWrapper {
+        position: relative;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        border-radius: 14px;
+        background: #f8fafc;
+      }
+
+      #mapStage {
+        width: 100%;
+        height: 100%;
+      }
+
+      #userMarker {
+        position: absolute;
+        width: 25px;
+        height: 25px;
+        background: #ef4444;
+        border: 3px solid white;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      #userArrow {
+        position: absolute;
+        width: 0;
+        height: 0;
+        border-left: 9px solid transparent;
+        border-right: 9px solid transparent;
+        border-bottom: 18px solid #ef4444;
+        transform: translate(-50%, -100%);
+        transform-origin: 50% 100%;
+        pointer-events: none;
+      }
+
+      #arrivalOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        background: rgba(15, 23, 42, 0.9);
+      }
+
+      #arrivalOverlay.visible {
+        display: flex;
+      }
+
+      .arrival-card {
+        width: min(90vw, 560px);
+        border-radius: 18px;
+        background: #f8fafc;
+        color: #0f172a;
+        text-align: center;
+        padding: 30px 24px;
+        box-shadow: 0 30px 60px rgba(15, 23, 42, 0.45);
+      }
+
+      .arrival-title {
+        font-size: clamp(30px, 4.8vw, 44px);
+        font-weight: 700;
+        margin-bottom: 10px;
+        color: #0b3b8a;
+      }
+
+      #arrivalMessage {
+        font-size: clamp(22px, 3.5vw, 32px);
+        font-weight: 600;
+        line-height: 1.3;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="header-left">
+          <div id="targetBanner">No target selected</div>
+          <div id="rosStatus" style="display:none;"></div>
+        </div>
+        <div class="header-buttons">
+          <button id="navigateBtn" style="display:none;">Navigate</button>
+          <button class="back-button" onclick="window.history.back()">
+            <span>← Back</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="map-panel">
+        <div id="mapWrapper">
+          <div id="mapStage"></div>
+
+          <div id="userMarker"></div>
+          <div id="userArrow"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="arrivalOverlay" role="alert" aria-live="assertive" aria-hidden="true">
+      <div class="arrival-card">
+        <div class="arrival-title">Item Found</div>
+        <div id="arrivalMessage"></div>
+      </div>
+    </div>
+
+    <script>
+      const API_URL = "http://localhost:5000/api";
+      const container = document.getElementById("mapWrapper");
+      const userMarker = document.getElementById("userMarker");
+      const userArrow = document.getElementById("userArrow");
+      const targetBanner = document.getElementById("targetBanner");
+      const arrivalOverlay = document.getElementById("arrivalOverlay");
+      const arrivalMessage = document.getElementById("arrivalMessage");
+      const queryParams = new URLSearchParams(window.location.search);
+      const LAYOUT_CACHE_KEY = "store-layout-v1";
+
+      function normalizeAisleLabel(value) {
+        if (!value) return "";
+        const text = String(value).trim().toUpperCase();
+        const digitsOnly = text.replace(/[^0-9]/g, "");
+        if (digitsOnly) return `A${parseInt(digitsOnly, 10)}`;
+        return text;
+      }
+
+      function formatAisleDisplay(value) {
+        const normalized = normalizeAisleLabel(value);
+        if (!normalized) return "";
+
+        const digitsOnly = normalized.replace(/[^0-9]/g, "");
+        if (digitsOnly) return `Aisle ${parseInt(digitsOnly, 10)}`;
+
+        return normalized;
+      }
+
+      function parseAislePosition(value) {
+        if (value === null || value === undefined || value === "") {
+          return null;
+        }
+
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed)) {
+          return null;
+        }
+
+        return Math.max(0, Math.min(1, parsed));
+      }
+
+      function getStoredMapTarget() {
+        try {
+          const raw = sessionStorage.getItem("mapTarget");
+          return raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      const storedTarget = getStoredMapTarget();
+      const selectedItemName =
+        queryParams.get("item") || storedTarget?.item || "";
+      const selectedAisleLabel = normalizeAisleLabel(
+        queryParams.get("aisle") || storedTarget?.aisle || "",
+      );
+      const selectedAislePosition = parseAislePosition(
+        queryParams.get("aisle_position") ?? storedTarget?.aisle_position,
+      );
+      function parseRosCoord(val) {
+        if (val === null || val === undefined || val === "") return null;
+        const n = Number.parseFloat(val);
+        return Number.isFinite(n) ? n : null;
+      }
+      const selectedXRos = parseRosCoord(queryParams.get("x_ros") ?? storedTarget?.x_ros);
+      const selectedYRos = parseRosCoord(queryParams.get("y_ros") ?? storedTarget?.y_ros);
+      const selectedYawRos = parseRosCoord(queryParams.get("yaw_ros") ?? storedTarget?.yaw_ros) ?? 0;
+
+      function updateTargetBanner() {
+        const aisleDisplay = formatAisleDisplay(selectedAisleLabel);
+
+        if (selectedItemName && selectedAisleLabel) {
+          targetBanner.textContent = `Selected: ${selectedItemName} • ${aisleDisplay}`;
+          return;
+        }
+
+        if (selectedItemName) {
+          targetBanner.textContent = `Selected: ${selectedItemName}`;
+          return;
+        }
+
+        if (selectedAisleLabel) {
+          targetBanner.textContent = `Selected: ${aisleDisplay}`;
+          return;
+        }
+
+        targetBanner.textContent = "No target selected";
+      }
+
+      updateTargetBanner();
+
+      let PIXELS_PER_METER = 60;
+
+      function m(v) {
+        return v * PIXELS_PER_METER;
+      }
+
+      let WORLD_WIDTH = 50;
+      let WORLD_HEIGHT = 40;
+
+      let pose = {
+        xPercent: 50,
+        yPercent: 50,
+        angle: 0,
+      };
+
+      let targetWorldPoint = null;
+      let targetMarker = null;
+      let targetLabel = null;
+      let routeLine = null;
+      let activeRouteRequestId = 0;
+      let lastRouteRequestAt = 0;
+      let isRequestingRoute = false;
+      let currentAbortController = null;
+      let hasReachedTarget = false;
+      let gameLoopId = null;
+      let lastRouteStart = null;
+
+      let cameraScale = 1;
+      const FOLLOW_ZOOM_FACTOR = 3.0;
+      const ROUTE_UPDATE_INTERVAL_MS = 33;
+      const ROUTE_RECALCULATE_DISTANCE_METERS = 0.8;
+      const ARRIVAL_THRESHOLD_METERS = 0.2;
+      const EXIT_MAP_DELAY_MS = 2200;
+
+      const stage = new Konva.Stage({
+        container: "mapStage",
+        width: container.clientWidth,
+        height: container.clientHeight,
+        draggable: false,
+      });
+
+      const layer = new Konva.Layer();
+      stage.add(layer);
+
+      function worldToScreen(x, y) {
+        const scale = stage.scaleX();
+
+        return {
+          x: stage.x() + x * scale,
+          y: stage.y() + y * scale,
+        };
+      }
+
+      function getUserWorldPosition() {
+        return {
+          x: (pose.xPercent / 100) * m(WORLD_WIDTH),
+          y: (pose.yPercent / 100) * m(WORLD_HEIGHT),
+        };
+      }
+
+      function shouldRecalculateRoute() {
+        if (!lastRouteStart) {
+          return true;
+        }
+
+        const user = getUserWorldPosition();
+        const userX = user.x / PIXELS_PER_METER;
+        const userY = user.y / PIXELS_PER_METER;
+
+        return (
+          Math.hypot(userX - lastRouteStart.x, userY - lastRouteStart.y) >=
+          ROUTE_RECALCULATE_DISTANCE_METERS
+        );
+      }
+
+      function exitMapView() {
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+
+        if (document.referrer) {
+          window.location.href = document.referrer;
+          return;
+        }
+
+        window.location.href = "items.html";
+      }
+
+      function checkTargetArrival() {
+        if (hasReachedTarget || !targetWorldPoint) {
+          return false;
+        }
+
+        const user = getUserWorldPosition();
+        const dx = targetWorldPoint.x - user.x;
+        const dy = targetWorldPoint.y - user.y;
+        const distanceMeters = Math.hypot(dx, dy) / PIXELS_PER_METER;
+
+        if (distanceMeters > ARRIVAL_THRESHOLD_METERS) {
+          return false;
+        }
+
+        hasReachedTarget = true;
+
+        const targetName =
+          selectedItemName || formatAisleDisplay(selectedAisleLabel) || "the selected item";
+
+        targetBanner.textContent = `Arrived at ${targetName}`;
+        arrivalMessage.textContent = `You are next to ${targetName}`;
+        arrivalOverlay.classList.add("visible");
+        arrivalOverlay.setAttribute("aria-hidden", "false");
+        clearRouteLine();
+
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
+
+        if (typeof gameLoopId === "number") {
+          clearInterval(gameLoopId);
+        }
+
+        window.setTimeout(() => {
+          exitMapView();
+        }, EXIT_MAP_DELAY_MS);
+
+        return true;
+      }
+
+      function centerCameraOn(worldX, worldY) {
+        const targetX = stage.width() / 2 - worldX * cameraScale;
+        const targetY = stage.height() / 2 - worldY * cameraScale;
+
+        const worldPixelWidth = m(WORLD_WIDTH) * cameraScale;
+        const worldPixelHeight = m(WORLD_HEIGHT) * cameraScale;
+
+        let clampedX = targetX;
+        let clampedY = targetY;
+
+        if (worldPixelWidth <= stage.width()) {
+          clampedX = (stage.width() - worldPixelWidth) / 2;
+        } else {
+          const minX = stage.width() - worldPixelWidth;
+          const maxX = 0;
+          clampedX = Math.max(minX, Math.min(maxX, targetX));
+        }
+
+        if (worldPixelHeight <= stage.height()) {
+          clampedY = (stage.height() - worldPixelHeight) / 2;
+        } else {
+          const minY = stage.height() - worldPixelHeight;
+          const maxY = 0;
+          clampedY = Math.max(minY, Math.min(maxY, targetY));
+        }
+
+        stage.position({ x: clampedX, y: clampedY });
+      }
+
+      function updateFollowCamera() {
+        const user = getUserWorldPosition();
+        centerCameraOn(user.x, user.y);
+      }
+
+      function focusCameraOnTarget() {
+        if (!targetWorldPoint) return;
+        centerCameraOn(targetWorldPoint.x, targetWorldPoint.y);
+        syncUser();
+      }
+
+      function applyFollowZoom() {
+        const worldPixelWidth = m(WORLD_WIDTH);
+        const worldPixelHeight = m(WORLD_HEIGHT);
+        const fitScale = Math.min(
+          stage.width() / worldPixelWidth,
+          stage.height() / worldPixelHeight,
+        );
+
+        if (slamMode) {
+          cameraScale = fitScale;
+          stage.scale({ x: cameraScale, y: cameraScale });
+          stage.position({
+            x: (stage.width() - worldPixelWidth * cameraScale) / 2,
+            y: (stage.height() - worldPixelHeight * cameraScale) / 2,
+          });
+        } else {
+          cameraScale = Math.min(fitScale * FOLLOW_ZOOM_FACTOR, 5);
+          stage.scale({ x: cameraScale, y: cameraScale });
+        }
+      }
+
+      function syncUser() {
+        let user;
+        if (slamMode && robotPixelPos) {
+          user = robotPixelPos;
+        } else {
+          user = getUserWorldPosition();
+        }
+
+        const p = worldToScreen(user.x, user.y);
+
+        userMarker.style.left = p.x + "px";
+        userMarker.style.top = p.y + "px";
+
+        userArrow.style.left = p.x + "px";
+        userArrow.style.top = p.y + "px";
+
+        userArrow.style.transform = `translate(-50%,-100%) rotate(${pose.angle + 90}deg)`;
+      }
+
+      function upsertTargetMarker() {
+        if (!targetWorldPoint) {
+          if (targetMarker) {
+            targetMarker.destroy();
+            targetMarker = null;
+          }
+          if (targetLabel) {
+            targetLabel.destroy();
+            targetLabel = null;
+          }
+          return;
+        }
+
+        if (!targetMarker) {
+          targetMarker = new Konva.Circle({
+            radius: 7,
+            fill: "#22c55e",
+            stroke: "#ffffff",
+            strokeWidth: 2,
+          });
+          layer.add(targetMarker);
+          targetMarker.moveToTop();
+        }
+
+        if (!targetLabel) {
+          const aisleDisplay = formatAisleDisplay(selectedAisleLabel);
+          const labelText = selectedItemName
+            ? `${selectedItemName} (${aisleDisplay})`
+            : `Target ${aisleDisplay}`;
+          targetLabel = new Konva.Text({
+            text: labelText,
+            fontSize: 22,
+            fill: "#065f46",
+            align: "center",
+            width: 280,
+          });
+          layer.add(targetLabel);
+          targetLabel.moveToTop();
+        }
+
+        targetMarker.position({
+          x: targetWorldPoint.x,
+          y: targetWorldPoint.y,
+        });
+
+        targetLabel.position({
+          x: targetWorldPoint.x - 140,
+          y: targetWorldPoint.y - 54,
+        });
+      }
+
+      function clearRouteLine() {
+        if (routeLine) {
+          routeLine.points([]);
+          layer.batchDraw();
+        }
+      }
+
+      function drawRouteLine(routePoints) {
+        if (!routePoints || routePoints.length < 2) {
+          clearRouteLine();
+          return;
+        }
+
+        const flattened = routePoints.flatMap((point) => [m(point.x), m(point.y)]);
+
+        if (!routeLine) {
+          routeLine = new Konva.Line({
+            points: flattened,
+            stroke: "#2563eb",
+            strokeWidth: 7,
+            lineCap: "round",
+            lineJoin: "round",
+          });
+          layer.add(routeLine);
+          // Keep route above floor/shelves but below target marker
+          if (targetMarker) targetMarker.moveToTop();
+          if (targetLabel) targetLabel.moveToTop();
+        } else {
+          routeLine.points(flattened);
+        }
+
+        layer.batchDraw();
+      }
+
+      async function requestAndRenderPath() {
+        if (hasReachedTarget) {
+          return;
+        }
+
+        if (!targetWorldPoint) {
+          clearRouteLine();
+          isRequestingRoute = false;
+          lastRouteStart = null;
+          return;
+        }
+
+        if (isRequestingRoute) {
+          return; // Skip if a request is already in progress
+        }
+
+        isRequestingRoute = true;
+        const user = getUserWorldPosition();
+        const requestId = ++activeRouteRequestId;
+
+        // Cancel previous request if still pending
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
+        currentAbortController = new AbortController();
+
+        const start = {
+          x: user.x / PIXELS_PER_METER,
+          y: user.y / PIXELS_PER_METER,
+        };
+
+        const end = {
+          x: targetWorldPoint.x / PIXELS_PER_METER,
+          y: targetWorldPoint.y / PIXELS_PER_METER,
+        };
+
+        lastRouteStart = start;
+
+        try {
+          const response = await fetch(`${API_URL}/path`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ start, end }),
+            signal: currentAbortController.signal,
+          });
+
+          if (requestId !== activeRouteRequestId) {
+            isRequestingRoute = false;
+            return;
+          }
+
+          if (!response.ok) {
+            console.error(`Path request failed: ${response.status} ${response.statusText}`);
+            clearRouteLine();
+            isRequestingRoute = false;
+            lastRouteRequestAt = Date.now();
+            return;
+          }
+
+          const result = await response.json();
+
+          drawRouteLine(result.points || []);
+
+          lastRouteRequestAt = Date.now();
+          isRequestingRoute = false;
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            // Request was cancelled, this is expected
+            isRequestingRoute = false;
+            return;
+          }
+          console.error('Path request error:', error);
+          clearRouteLine();
+          isRequestingRoute = false;
+          lastRouteRequestAt = Date.now();
+        }
+      }
+
+      async function loadLayout() {
+        let layout = null;
+
+        const cachedLayout = sessionStorage.getItem(LAYOUT_CACHE_KEY);
+        if (cachedLayout) {
+          try {
+            layout = JSON.parse(cachedLayout);
+          } catch (_error) {
+            layout = null;
+          }
+        }
+
+        if (!layout) {
+          const res = await fetch("store_layout.json", { cache: "force-cache" });
+          layout = await res.json();
+          sessionStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify(layout));
+        }
+
+        WORLD_WIDTH = layout.world.width;
+        WORLD_HEIGHT = layout.world.height;
+
+        drawLayout(layout);
+      }
+
+      function drawLayout(layout) {
+        layer.destroyChildren();
+        targetMarker = null;
+        targetLabel = null;
+        routeLine = null;
+        targetWorldPoint = null;
+        hasReachedTarget = false;
+        lastRouteStart = null;
+
+        // Compute bounds of all shelves 
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        layout.shelves.forEach((shelf) => {
+          shelf.polygon.forEach(([x, y]) => {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          });
+        });
+
+        const padding = 1; // meters of space around store
+
+        WORLD_WIDTH = maxX - minX + padding * 2;
+        WORLD_HEIGHT = maxY - minY + padding * 2;
+
+        const offsetX = padding - minX;
+        const offsetY = padding - minY;
+
+        // Draw floor 
+        layer.add(
+          new Konva.Rect({
+            x: 0,
+            y: 0,
+            width: m(WORLD_WIDTH),
+            height: m(WORLD_HEIGHT),
+            fill: "#f8fafc",
+          }),
+        );
+
+        // Draw shelves 
+        layout.shelves.forEach((shelf) => {
+          const flat = shelf.polygon
+            .map(([x, y]) => [x + offsetX, y + offsetY])
+            .flat()
+            .map((v) => m(v));
+
+          layer.add(
+            new Konva.Line({
+              points: flat,
+              closed: true,
+              fill: "#9ca3af",
+              stroke: "#6b7280",
+              strokeWidth: 4,
+            }),
+          );
+        });
+
+        // Draw aisle labels 
+        if (layout.aisles) {
+          const rowHeight = layout.shelf_length ?? 16.75;
+          const rowGap = layout.row_gap ?? 4;
+          const startY = layout.start_y ?? 0;
+
+          const matchedAisle = layout.aisles.find(
+            (a) => normalizeAisleLabel(a.label) === selectedAisleLabel,
+          );
+
+          if (matchedAisle) {
+            const targetX = m(matchedAisle.x + offsetX);
+            const rowTop = startY + matchedAisle.row * (rowHeight + rowGap);
+            const positionInAisle = selectedAislePosition ?? 0.5;
+            const targetY = m(rowTop + rowHeight * positionInAisle + offsetY);
+            targetWorldPoint = { x: targetX, y: targetY };
+          }
+
+          layout.aisles.forEach((a) => {
+            const x = m(a.x + offsetX);
+
+            const rowTop = startY + a.row * (rowHeight + rowGap);
+            const rowBottom = rowTop + rowHeight;
+
+            // top label
+            layer.add(
+              new Konva.Text({
+                x: x - 55,
+                y: m(rowTop + offsetY) + 4,
+                width: 110,
+                align: "center",
+                text: formatAisleDisplay(a.label),
+                fontSize: 28,
+                fill: "#334155",
+              }),
+            );
+
+            // bottom label
+            layer.add(
+              new Konva.Text({
+                x: x - 55,
+                y: m(rowBottom + offsetY) - 34,
+                width: 110,
+                align: "center",
+                text: formatAisleDisplay(a.label),
+                fontSize: 28,
+                fill: "#334155",
+              }),
+            );
+          });
+        }
+
+        upsertTargetMarker();
+
+        layer.batchDraw();
+
+        applyFollowZoom();
+        updateFollowCamera();
+        syncUser();
+
+        if (checkTargetArrival()) {
+          return;
+        }
+
+        requestAndRenderPath();
+      }
+
+      window.addEventListener("resize", () => {
+        stage.width(container.clientWidth);
+        stage.height(container.clientHeight);
+
+        applyFollowZoom();
+        if (!slamMode) {
+          updateFollowCamera();
+        }
+        syncUser();
+      });
+
+      // Keyboard controls
+      const keys = {};
+
+      window.addEventListener("keydown", (e) => {
+        keys[e.key.toLowerCase()] = true;
+      });
+
+      window.addEventListener("keyup", (e) => {
+        keys[e.key.toLowerCase()] = false;
+      });
+
+      // Game loop for continuous movement
+      const ROTATION_SPEED = 3; // degrees per frame
+      const MOVE_SPEED = 0.2; // percent per frame
+
+      gameLoopId = setInterval(() => {
+        let moved = false;
+
+        // Turning
+        if (keys["a"]) {
+          pose.angle -= ROTATION_SPEED;
+          moved = true;
+        }
+        if (keys["d"]) {
+          pose.angle += ROTATION_SPEED;
+          moved = true;
+        }
+
+        // Moving forward
+        if (keys["w"]) {
+          const angleRad = (pose.angle * Math.PI) / 180;
+          pose.xPercent += Math.cos(angleRad) * MOVE_SPEED;
+          pose.yPercent += Math.sin(angleRad) * MOVE_SPEED;
+          pose.xPercent = Math.max(0, Math.min(100, pose.xPercent));
+          pose.yPercent = Math.max(0, Math.min(100, pose.yPercent));
+          moved = true;
+        }
+
+        if (moved) {
+          if (!slamMode) {
+            updateFollowCamera();
+          }
+          syncUser();
+
+          if (checkTargetArrival()) {
+            return;
+          }
+
+          const now = Date.now();
+          if (
+            targetWorldPoint &&
+            now - lastRouteRequestAt >= ROUTE_UPDATE_INTERVAL_MS &&
+            shouldRecalculateRoute()
+          ) {
+            requestAndRenderPath();
+          }
+        }
+      }, 1000 / 60); // 60 FPS
+
+      let slamMode = false;
+      let mapInfo = null;
+      let robotPixelPos = null;
+      let ros = null;
+
+      async function loadSlamLayout() {
+        const imgRes = await fetch("lobby_map.png", { cache: "force-cache" });
+        if (!imgRes.ok) {
+          loadLayout();
+          syncUser();
+          return;
+        }
+        const imgObj = new Image();
+        imgObj.crossOrigin = "";
+        imgObj.src = "lobby_map.png";
+        await new Promise((resolve, reject) => {
+          imgObj.onload = resolve;
+          imgObj.onerror = reject;
+        });
+        WORLD_WIDTH = mapInfo.width_px;
+        WORLD_HEIGHT = mapInfo.height_px;
+        PIXELS_PER_METER = 1;
+        layer.destroyChildren();
+        targetMarker = null;
+        targetLabel = null;
+        routeLine = null;
+        hasReachedTarget = false;
+        lastRouteStart = null;
+        const mapRect = new Konva.Rect({
+          x: 0,
+          y: 0,
+          width: mapInfo.width_px,
+          height: mapInfo.height_px,
+          fill: "#f8fafc",
+        });
+        layer.add(mapRect);
+        const bgImage = new Konva.Image({
+          image: imgObj,
+          x: 0,
+          y: 0,
+          width: mapInfo.width_px,
+          height: mapInfo.height_px,
+        });
+        layer.add(bgImage);
+        if (selectedXRos != null && selectedYRos != null) {
+          const col = (selectedXRos - mapInfo.origin_x) / mapInfo.resolution;
+          const row = (mapInfo.height_px - 1) - (selectedYRos - mapInfo.origin_y) / mapInfo.resolution;
+          targetWorldPoint = { x: col, y: row };
+        } else {
+          targetWorldPoint = null;
+        }
+        upsertTargetMarker();
+        layer.batchDraw();
+        applyFollowZoom();
+        if (robotPixelPos) {
+          syncUser();
+        } else {
+          userMarker.style.display = "none";
+          userArrow.style.display = "none";
+        }
+        if (targetWorldPoint && selectedXRos != null && selectedYRos != null) {
+          document.getElementById("navigateBtn").style.display = "inline-block";
+        }
+      }
+
+      function rosToPixel(xRos, yRos) {
+        if (!mapInfo) return null;
+        const col = (xRos - mapInfo.origin_x) / mapInfo.resolution;
+        const row = (mapInfo.height_px - 1) - (yRos - mapInfo.origin_y) / mapInfo.resolution;
+        return { x: col, y: row };
+      }
+
+      function initRosAndSlam() {
+        document.getElementById("rosStatus").style.display = "inline-block";
+        document.getElementById("rosStatus").textContent = "Connecting...";
+        document.getElementById("rosStatus").style.color = "#f59e0b";
+        fetch(`${API_URL}/ros_config`)
+          .then((r) => r.json())
+          .then((cfg) => {
+            const url = `ws://${cfg.rosbridge_host}:${cfg.rosbridge_port}`;
+            ros = new ROSLIB.Ros({ url });
+            ros.on("connection", () => {
+              document.getElementById("rosStatus").textContent = "Connected";
+              document.getElementById("rosStatus").style.color = "#22c55e";
+              const amclTopic = new ROSLIB.Topic({
+                ros,
+                name: "/amcl_pose",
+                messageType: "geometry_msgs/PoseWithCovarianceStamped",
+              });
+              const planTopic = new ROSLIB.Topic({
+                ros,
+                name: "/plan",
+                messageType: "nav_msgs/Path",
+              });
+              planTopic.subscribe((msg) => {
+                if (!msg.poses || !mapInfo || !slamMode) return;
+                const points = [];
+                for (let i = 0; i < msg.poses.length; i++) {
+                  const pos = msg.poses[i].pose?.position;
+                  if (pos) {
+                    const px = rosToPixel(pos.x, pos.y);
+                    if (px) points.push(px.x, px.y);
+                  }
+                }
+                if (points.length >= 4) {
+                  if (routeLine) {
+                    routeLine.points(points);
+                  } else {
+                    routeLine = new Konva.Line({
+                      points,
+                      stroke: "#2563eb",
+                      strokeWidth: 5,
+                      lineCap: "round",
+                      lineJoin: "round",
+                    });
+                    layer.add(routeLine);
+                    if (targetMarker) targetMarker.moveToTop();
+                    if (targetLabel) targetLabel.moveToTop();
+                  }
+                  layer.batchDraw();
+                } else if (routeLine) {
+                  routeLine.points([]);
+                  layer.batchDraw();
+                }
+              });
+
+              amclTopic.subscribe((msg) => {
+                const p = msg.pose?.pose?.position;
+                if (p && mapInfo) {
+                  const px = rosToPixel(p.x, p.y);
+                  if (px) {
+                    robotPixelPos = px;
+                    pose.xPercent = (px.x / mapInfo.width_px) * 100;
+                    pose.yPercent = (px.y / mapInfo.height_px) * 100;
+                    userMarker.style.display = "";
+                    userArrow.style.display = "";
+                    syncUser();
+                  }
+                }
+              });
+            });
+            ros.on("error", () => {
+              document.getElementById("rosStatus").textContent = "Disconnected";
+              document.getElementById("rosStatus").style.color = "#ef4444";
+            });
+            ros.on("close", () => {
+              document.getElementById("rosStatus").textContent = "Disconnected";
+              document.getElementById("rosStatus").style.color = "#ef4444";
+            });
+          })
+          .catch(() => {
+            document.getElementById("rosStatus").textContent = "Disconnected";
+            document.getElementById("rosStatus").style.color = "#ef4444";
+          });
+      }
+
+      let navStatusTopic = null;
+      let navGoalSentAt = null;
+
+      function triggerArrival() {
+        if (hasReachedTarget) return;
+        hasReachedTarget = true;
+        const targetName = selectedItemName || formatAisleDisplay(selectedAisleLabel) || "the selected item";
+        targetBanner.textContent = `Arrived at ${targetName}`;
+        arrivalMessage.textContent = `You are next to ${targetName}`;
+        arrivalOverlay.classList.add("visible");
+        arrivalOverlay.setAttribute("aria-hidden", "false");
+        clearRouteLine();
+        setTimeout(exitMapView, EXIT_MAP_DELAY_MS);
+      }
+
+      function subscribeNavStatus() {
+        if (navStatusTopic || !ros) return;
+        navStatusTopic = new ROSLIB.Topic({
+          ros,
+          name: "/navigate_to_pose/_action/status",
+          messageType: "action_msgs/GoalStatusArray",
+        });
+        navStatusTopic.subscribe((msg) => {
+          if (!navGoalSentAt || hasReachedTarget) return;
+          const statuses = msg.status_list || [];
+          for (let i = 0; i < statuses.length; i++) {
+            const s = statuses[i].status;
+            // STATUS_SUCCEEDED = 4, STATUS_ABORTED = 6, STATUS_CANCELED = 5
+            if (s === 4) {
+              triggerArrival();
+              return;
+            }
+          }
+        });
+      }
+
+      document.getElementById("navigateBtn").addEventListener("click", () => {
+        if (!ros || !ros.isConnected || selectedXRos == null || selectedYRos == null) return;
+        const goalTopic = new ROSLIB.Topic({
+          ros,
+          name: "/goal_pose",
+          messageType: "geometry_msgs/PoseStamped",
+        });
+        const yaw = selectedYawRos;
+        const goalMsg = {
+          header: { frame_id: "map", stamp: { sec: 0, nanosec: 0 } },
+          pose: {
+            position: { x: selectedXRos, y: selectedYRos, z: 0.0 },
+            orientation: {
+              x: 0,
+              y: 0,
+              z: Math.sin(yaw / 2),
+              w: Math.cos(yaw / 2),
+            },
+          },
+        };
+        hasReachedTarget = false;
+        navGoalSentAt = Date.now();
+        goalTopic.publish(goalMsg);
+        subscribeNavStatus();
+      });
+
+      fetch(`${API_URL}/map_info`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((info) => {
+          mapInfo = info;
+          slamMode = true;
+          initRosAndSlam();
+          loadSlamLayout();
+        })
+        .catch(() => {
+          loadLayout();
+          syncUser();
+        });
+    </script>
+  </body>
+</html>
