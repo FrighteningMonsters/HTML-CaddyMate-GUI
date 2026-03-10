@@ -57,6 +57,7 @@
     font-size: 16px;
     padding: 0;
     border-radius: 12px;
+    color: #ffffff;
 }
 
 .touch-keyboard {
@@ -109,10 +110,16 @@
 }
 
 .key-action {
+    border-color: #dc2626;
+    background: #fa5c5c;
+    color: #ffffff;
     font-size: 13px;
 }
 
 .key-space {
+    border-color: #6b7280;
+    background: #0077ff;
+    color: #ffffff;
     width: 100%;
 }
 
