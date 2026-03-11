@@ -54,10 +54,55 @@
     width: 76px;
     height: 52px;
     min-height: 52px;
-    font-size: 16px;
     padding: 0;
     border-radius: 12px;
     color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.12s linear, border-color 0.12s linear;
+}
+
+.keyboard-toggle[aria-expanded="false"] {
+    background: #6b7280;
+    border-color: #6b7280;
+}
+
+.mic-toggle {
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+    flex-shrink: 0;
+    padding: 0;
+    border-radius: 12px;
+    background: #0077ff;
+    color: #ffffff;
+    border: 2px solid #24b4fb;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.12s linear, border-color 0.12s linear;
+}
+
+.btn-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+    filter: invert(1);
+}
+
+.mic-toggle.listening {
+    background: #dc2626;
+    border-color: #b91c1c;
+    animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
 }
 
 .touch-keyboard {

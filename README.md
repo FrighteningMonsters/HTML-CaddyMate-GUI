@@ -28,12 +28,13 @@ The server will:
 ## Pages
 
 - **home.html** - Main menu with Browse Categories and Search Items buttons
-- **browse-categories.html** - Displays all product categories from the database
-- **search.html** - Search for items (to be implemented)
+- **categories.html** - Displays all product categories from the database
+- **search.html** - Search for items and navigate directly to the map
 
 ## API Endpoints
 
 - `GET /api/categories` - Get all categories
+- `GET /api/items` - Get all items for search
 - `GET /api/items/<category_id>` - Get items for a specific category
 
 ## Database

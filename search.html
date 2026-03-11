@@ -16,7 +16,8 @@
             <div class="search-panel">
                 <div class="search-input-row">
                     <input id="searchInput" class="search-input" type="text" autocomplete="off" inputmode="none" placeholder="Start typing to search for an item" aria-label="Search items by name">
-                    <button id="keyboardToggle" class="keyboard-toggle" type="button" aria-expanded="true" aria-controls="touchKeyboard">Hide</button>
+                    <button id="micToggle" class="mic-toggle" type="button" aria-pressed="false" aria-label="Start voice input"><img src="resources/microphone.png" alt="" class="btn-icon"></button>
+                    <button id="keyboardToggle" class="keyboard-toggle" type="button" aria-expanded="true" aria-controls="touchKeyboard"><img src="resources/keyboard.png" alt="" class="btn-icon"></button>
                 </div>
             </div>
         </div>
@@ -213,13 +214,96 @@
 
         document.getElementById('searchInput').addEventListener('input', applySearch);
 
+        // Voice recognition
+        let recognition = null;
+        let isListening = false;
+
+        function buildSpeechGrammar(items) {
+            const ListClass = window.SpeechGrammarList || window.webkitSpeechGrammarList;
+            if (!ListClass || !items.length) return null;
+            const itemNames = items.map(i => i.name.toLowerCase()).join(' | ');
+            const grammar = `#JSGF V1.0; grammar items; public <item> = ${itemNames};`;
+            const list = new ListClass();
+            list.addFromString(grammar, 1);
+            return list;
+        }
+
+        function setMicListening(listening) {
+            isListening = listening;
+            const btn = document.getElementById('micToggle');
+            btn.classList.toggle('listening', listening);
+            btn.setAttribute('aria-pressed', String(listening));
+            btn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Start voice input');
+        }
+
+        function createRecognition() {
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRec) return null;
+
+            const rec = new SpeechRec();
+            rec.continuous = false;
+            rec.interimResults = true;
+            rec.lang = 'en-GB';
+            rec.maxAlternatives = 1;
+
+            const grammar = buildSpeechGrammar(allItems);
+            if (grammar) rec.grammars = grammar;
+
+            rec.onstart = () => setMicListening(true);
+
+            rec.onresult = (event) => {
+                const input = document.getElementById('searchInput');
+                let interim = '';
+                let final = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        final += transcript;
+                    } else {
+                        interim += transcript;
+                    }
+                }
+
+                input.value = (final || interim).trim().replace(/[.,!?;:'"]+$/g, '').trim();
+                applySearch();
+            };
+
+            rec.onend = () => setMicListening(false);
+
+            rec.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                setMicListening(false);
+            };
+
+            return rec;
+        }
+
+        function toggleVoiceInput() {
+            if (isListening) {
+                if (recognition) recognition.stop();
+                return;
+            }
+
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRec) {
+                alert('Voice recognition is not supported in this browser.');
+                return;
+            }
+
+            recognition = createRecognition();
+            if (recognition) recognition.start();
+        }
+
+        document.getElementById('micToggle').addEventListener('click', toggleVoiceInput);
+
         function setKeyboardExpanded(isExpanded) {
             const keyboard = document.getElementById('touchKeyboard');
             const toggle = document.getElementById('keyboardToggle');
 
             keyboard.classList.toggle('collapsed', !isExpanded);
             toggle.setAttribute('aria-expanded', String(isExpanded));
-            toggle.textContent = isExpanded ? 'Hide' : 'Show';
+            toggle.innerHTML = '<img src="resources/keyboard.png" alt="" class="btn-icon">';
         }
 
         function insertTextAtCursor(input, text) {
