@@ -9,6 +9,11 @@ A touch-friendly GUI for a 7-inch display designed for elderly users.
 pip install -r requirements.txt
 ```
 
+2. (Optional) Regenerate database with ROS coordinates for TurtleBot navigation:
+```bash
+python data/Database_Creator.py
+```
+
 ## Running the Application
 
 1. Start the Flask server:
@@ -43,4 +48,12 @@ The application uses SQLite database located at `data/caddymate_store.db` with t
 
 ### Tables:
 - **categories** (id, name)
-- **items** (id, name, category_id, ...)
+- **items** (id, name, category_id, aisle, aisle_position, x_ros, y_ros, yaw_ros)
+
+## TurtleBot Integration
+
+When `lobby_final.pgm` and `lobby_final.yaml` (SLAM map) are in the project root, the map page loads the SLAM map and connects to ROS via rosbridge.
+
+1. Ensure rosbridge is running on the Dice Machine: `ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090`
+2. Edit `ros_config.json` to set `rosbridge_host` to the Dice Machine IP (e.g. `129.215.3.31`)
+3. Items with `x_ros`, `y_ros`, `yaw_ros` coordinates show a "Navigate Here" button on the map page

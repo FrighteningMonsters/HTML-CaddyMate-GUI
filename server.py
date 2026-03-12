@@ -6,11 +6,21 @@ import json
 import heapq
 from collections import deque
 
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 app = Flask(__name__)
 CORS(app)
 
 DB_PATH = 'data/caddymate_store.db'
 LAYOUT_PATH = 'store_layout.json'
+SLAM_PGM_PATH = 'lobby_final.pgm'
+SLAM_YAML_PATH = 'lobby_final.yaml'
+SLAM_OUTPUT_PNG = 'lobby_map.png'
+ROS_CONFIG_PATH = 'ros_config.json'
 
 # Cache for pathfinding grid
 _grid_cache = {
@@ -342,7 +352,6 @@ def get_items_by_category(category_id):
     conn.close()
     return jsonify(items)
 
-
 @app.route('/api/items')
 def get_all_items():
     conn = get_db_connection()
@@ -351,7 +360,6 @@ def get_all_items():
     items = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return jsonify(items)
-
 
 @app.route('/api/path', methods=['POST'])
 def get_path():
@@ -375,8 +383,99 @@ def get_path():
         },
     })
 
+
+def convert_slam_pgm_to_png():
+    """Convert lobby_final.pgm to styled lobby_map.png for UI display."""
+    if not HAS_PIL or not os.path.isfile(SLAM_PGM_PATH):
+        return
+    try:
+        img = Image.open(SLAM_PGM_PATH).convert('L')
+        pixels = img.load()
+        w, h = img.size
+        out = Image.new('RGBA', (w, h))
+        out_pixels = out.load()
+        for y in range(h):
+            for x in range(w):
+                v = pixels[x, y]
+                if v >= 205:
+                    out_pixels[x, y] = (248, 250, 252, 255)
+                elif v <= 50:
+                    out_pixels[x, y] = (30, 41, 59, 255)
+                else:
+                    out_pixels[x, y] = (148, 163, 184, 255)
+        out.save(SLAM_OUTPUT_PNG)
+        print(f"SLAM map converted: {SLAM_OUTPUT_PNG}")
+    except Exception as e:
+        print(f"SLAM map conversion failed: {e}")
+
+
+def load_slam_map_info():
+    """Load map metadata from lobby_final.yaml."""
+    if not os.path.isfile(SLAM_YAML_PATH):
+        return None
+    try:
+        with open(SLAM_YAML_PATH, 'r', encoding='utf-8') as f:
+            data = f.read()
+        resolution = 0.05
+        origin_x, origin_y = -7.75, -6.35
+        for line in data.splitlines():
+            line = line.strip()
+            if line.startswith('resolution:'):
+                resolution = float(line.split(':', 1)[1].strip())
+            elif line.startswith('origin:'):
+                rest = line.split(':', 1)[1].strip().strip('[]')
+                parts = rest.split(',')
+                if len(parts) >= 2:
+                    origin_x = float(parts[0].strip())
+                    origin_y = float(parts[1].strip())
+        if os.path.isfile(SLAM_PGM_PATH) and HAS_PIL:
+            with Image.open(SLAM_PGM_PATH) as img:
+                w, h = img.size
+        else:
+            w, h = 372, 278
+        return {
+            'resolution': resolution,
+            'origin_x': origin_x,
+            'origin_y': origin_y,
+            'width_px': w,
+            'height_px': h,
+            'world_width_m': w * resolution,
+            'world_height_m': h * resolution,
+        }
+    except Exception:
+        return None
+
+
+@app.route('/api/map_info')
+def get_map_info():
+    info = load_slam_map_info()
+    if info is None:
+        return jsonify({'error': 'SLAM map not available'}), 404
+    return jsonify(info)
+
+
+@app.route('/api/ros_config')
+def get_ros_config():
+    if not os.path.isfile(ROS_CONFIG_PATH):
+        return jsonify({'rosbridge_host': 'localhost', 'rosbridge_port': 9090})
+    try:
+        with open(ROS_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        return jsonify({
+            'rosbridge_host': cfg.get('rosbridge_host', 'localhost'),
+            'rosbridge_port': cfg.get('rosbridge_port', 9090),
+        })
+    except Exception:
+        return jsonify({'rosbridge_host': 'localhost', 'rosbridge_port': 9090})
+
+
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=5000)
+    args = parser.parse_args()
+    convert_slam_pgm_to_png()
     print("Initializing pathfinding grid cache...")
     initialize_grid_cache(grid_resolution=1.0)
-    print("Starting server...")
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    print(f"Starting server on port {args.port}...")
+    app.run(debug=False, host='0.0.0.0', port=args.port)
