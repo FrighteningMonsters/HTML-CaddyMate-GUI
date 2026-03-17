@@ -1,6 +1,6 @@
 # CaddyMate GUI
 
-A touch-friendly GUI for a 7-inch display designed for elderly users.
+A touch-friendly GUI for a 7-inch display designed for elderly users. Built on the original HTML/Flask shopping UI, with TurtleBot3 + ROS2 Jazzy + Nav2 integration for supermarket navigation.
 
 ## Setup
 
@@ -9,7 +9,7 @@ A touch-friendly GUI for a 7-inch display designed for elderly users.
 pip install -r requirements.txt
 ```
 
-2. (Optional) Regenerate database with ROS coordinates for TurtleBot navigation:
+2. Run once to create/regenerate the database with ROS coordinates for TurtleBot navigation:
 ```bash
 python data/Database_Creator.py
 ```
@@ -29,17 +29,24 @@ http://localhost:5000
 The server will:
 - Serve the HTML pages
 - Provide API endpoints for categories and items from the SQLite database
+- Convert SLAM map (PGM) to PNG for the map page
+- Serve `map_info` and `ros_config` for TurtleBot integration
 
 ## Pages
 
 - **home.html** - Main menu with Browse Categories and Search Items buttons
 - **browse-categories.html** - Displays all product categories from the database
+- **items.html** - Displays items for a selected category; items with ROS coordinates link to the map with target pre-selected
+- **map.html** - SLAM map view with robot position, Nav2 path, and Navigate button (when connected to TurtleBot)
 - **search.html** - Search for items (to be implemented)
 
 ## API Endpoints
 
 - `GET /api/categories` - Get all categories
 - `GET /api/items/<category_id>` - Get items for a specific category
+- `GET /api/map_info` - Get SLAM map metadata (resolution, origin, dimensions)
+- `GET /api/ros_config` - Get rosbridge host and port for WebSocket connection
+- `POST /api/path` - Compute path between two points (used by server-side pathfinding; map page uses Nav2 `/plan` when connected)
 
 ## Database
 
@@ -49,10 +56,44 @@ The application uses SQLite database located at `data/caddymate_store.db` with t
 - **categories** (id, name)
 - **items** (id, name, category_id, aisle, aisle_position, x_ros, y_ros, yaw_ros)
 
+The `x_ros`, `y_ros`, `yaw_ros` columns store ROS map-frame coordinates for TurtleBot navigation. Items with these values show a Navigate button on the map page.
+
 ## TurtleBot Integration
 
 When `lobby_final.pgm` and `lobby_final.yaml` (SLAM map) are in the project root, the map page loads the SLAM map and connects to ROS via rosbridge.
 
-1. Ensure rosbridge is running on the Dice Machine: `ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090`
-2. Edit `ros_config.json` to set `rosbridge_host` to the Dice Machine IP (e.g. `129.215.3.31`)
-3. Items with `x_ros`, `y_ros`, `yaw_ros` coordinates show a "Navigate Here" button on the map page
+### Prerequisites
+
+1. **rosbridge** running on the Dice Machine:
+```bash
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
+```
+
+2. **ros_config.json** in project root with `rosbridge_host` and `rosbridge_port` (e.g. `129.215.3.31`, `9090`)
+
+### Map Page Flow
+
+1. `GET /api/map_info` → SLAM mode enabled; `lobby_map.png` displayed as background
+2. WebSocket connection to rosbridge → `/amcl_pose` (robot position), `/plan` (Nav2 path), `/navigate_to_pose/_action/status` (arrival/failure)
+3. Green marker = target item (items with `x_ros`, `y_ros` only)
+4. **Navigate** button → enables motor, publishes `/goal_pose`, monitors status
+5. On arrival (status SUCCEEDED) or failure (CANCELED/ABORTED) → overlay shown; motor released
+6. **Stop** button cancels navigation and releases motor
+
+### Network Topology (Demo Setup)
+
+| Device        | Role                          |
+|---------------|-------------------------------|
+| Raspberry Pi  | Flask server, UI hosting      |
+| Dice Machine  | ROS2, Nav2, rosbridge :9090   |
+| TurtleBot     | LiDAR, motors, ROS2 DDS      |
+
+Browser → `ws://<Dice Machine IP>:9090` (rosbridge) → ROS2 DDS → TurtleBot
+
+### UI State Indicators
+
+- **Disconnected** – No rosbridge connection; Navigate disabled
+- **Connection lost** – Banner when WebSocket drops
+- **Position unavailable** – No `/amcl_pose` for 5+ seconds
+- **Robot map not ready** – `map_info` fetch failed; placeholder shown
+
