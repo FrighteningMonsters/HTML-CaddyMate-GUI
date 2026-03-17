@@ -1,0 +1,76 @@
+.motor-container {
+    justify-content: flex-start;
+    gap: 20px;
+    padding-top: 20px;
+}
+
+.header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 20px;
+}
+
+.header h1 {
+    margin: 0;
+}
+
+.motor-controls {
+    width: 100%;
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: stretch;
+}
+
+.direction-button {
+    min-height: 240px;
+    border-radius: 16px;
+    font-size: 120px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.2em;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.direction-button span {
+    display: block;
+    line-height: 1;
+}
+
+.direction-button.is-active {
+    background-color: #0048b3;
+    border-color: #0b67df;
+}
+
+.motor-status {
+    width: 100%;
+    min-height: 28px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.motor-status-error {
+    color: #b91c1c;
+}
+
+@media (max-width: 900px) {
+    .motor-controls {
+        gap: 14px;
+    }
+
+    .direction-button {
+        min-height: 180px;
+        font-size: 88px;
+    }
+
+    .motor-status {
+        font-size: 18px;
+    }
+}

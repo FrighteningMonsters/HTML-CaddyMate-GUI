@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motor Control - CaddyMate</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="motor.css">
+</head>
+<body>
+    <div class="container motor-container">
+        <div class="header">
+            <button class="back-button" onclick="window.location.href='home.html'">
+                <span>← Back</span>
+            </button>
+            <h1>Motor Control</h1>
+        </div>
+
+        <div class="motor-controls" role="group" aria-label="Move base up or down">
+            <button
+                type="button"
+                class="direction-button"
+                data-direction="up"
+                aria-label="Spin motor up while held"
+            >
+                <span aria-hidden="true">&#9650;</span>
+            </button>
+            <button
+                type="button"
+                class="direction-button"
+                data-direction="down"
+                aria-label="Spin motor down while held"
+            >
+                <span aria-hidden="true">&#9660;</span>
+            </button>
+        </div>
+
+        <p id="motor-status" class="motor-status" aria-live="polite">Motor idle</p>
+    </div>
+
+    <script>
+        (function () {
+            const statusEl = document.getElementById('motor-status');
+            const directionButtons = document.querySelectorAll('.direction-button');
+            let activeDirection = null;
+
+            function setStatus(message, isError) {
+                statusEl.textContent = message;
+                statusEl.classList.toggle('motor-status-error', !!isError);
+            }
+
+            async function sendMotorCommand(action, direction) {
+                const endpoint = action === 'start' ? '/api/motor/start' : '/api/motor/stop';
+                const body = action === 'start' ? { direction: direction } : {};
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(body),
+                    keepalive: action === 'stop',
+                });
+
+                if (!response.ok) {
+                    const payload = await response.json().catch(function () { return {}; });
+                    throw new Error(payload.error || 'Motor command failed');
+                }
+            }
+
+            async function handlePress(direction) {
+                if (activeDirection === direction) {
+                    return;
+                }
+
+                if (activeDirection !== null && activeDirection !== direction) {
+                    await handleRelease(activeDirection);
+                }
+
+                activeDirection = direction;
+                document.querySelector('.direction-button[data-direction="' + direction + '"]').classList.add('is-active');
+                setStatus('Motor running ' + direction + '...', false);
+
+                try {
+                    await sendMotorCommand('start', direction);
+                } catch (error) {
+                    activeDirection = null;
+                    document.querySelector('.direction-button[data-direction="' + direction + '"]').classList.remove('is-active');
+                    setStatus(error.message, true);
+                }
+            }
+
+            async function handleRelease(direction) {
+                if (activeDirection !== direction) {
+                    return;
+                }
+
+                activeDirection = null;
+                document.querySelector('.direction-button[data-direction="' + direction + '"]').classList.remove('is-active');
+
+                try {
+                    await sendMotorCommand('stop');
+                    setStatus('Motor idle', false);
+                } catch (error) {
+                    setStatus(error.message, true);
+                }
+            }
+
+            directionButtons.forEach(function (button) {
+                const direction = button.dataset.direction;
+
+                button.addEventListener('pointerdown', function (event) {
+                    event.preventDefault();
+                    button.setPointerCapture(event.pointerId);
+                    handlePress(direction);
+                });
+
+                button.addEventListener('pointerup', function () {
+                    handleRelease(direction);
+                });
+
+                button.addEventListener('pointercancel', function () {
+                    handleRelease(direction);
+                });
+
+                button.addEventListener('lostpointercapture', function () {
+                    handleRelease(direction);
+                });
+
+                button.addEventListener('contextmenu', function (event) {
+                    event.preventDefault();
+                });
+            });
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden && activeDirection !== null) {
+                    handleRelease(activeDirection);
+                }
+            });
+
+            window.addEventListener('beforeunload', function () {
+                if (activeDirection !== null) {
+                    sendMotorCommand('stop').catch(function () {});
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

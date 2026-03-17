@@ -4,7 +4,15 @@ import sqlite3
 import os
 import json
 import heapq
+import threading
 from collections import deque
+
+try:
+    import serial
+    HAS_SERIAL = True
+except ImportError:
+    serial = None
+    HAS_SERIAL = False
 
 try:
     from PIL import Image
@@ -21,6 +29,8 @@ SLAM_PGM_PATH = 'lobby_final.pgm'
 SLAM_YAML_PATH = 'lobby_final.yaml'
 SLAM_OUTPUT_PNG = 'lobby_map.png'
 ROS_CONFIG_PATH = 'ros_config.json'
+ARDUINO_SERIAL_PORT = os.getenv('ARDUINO_SERIAL_PORT', 'COM3') # TODO: check this
+ARDUINO_BAUD_RATE = int(os.getenv('ARDUINO_BAUD_RATE', '115200'))
 
 # Cache for pathfinding grid
 _grid_cache = {
@@ -32,6 +42,49 @@ _grid_cache = {
     'grid_resolution': None,
     'shelves': None,
 }
+
+
+class ArduinoMotorController:
+    def __init__(self, port, baud_rate):
+        self.port = port
+        self.baud_rate = baud_rate
+        self._serial = None
+        self._lock = threading.Lock()
+        self._last_direction = None
+
+    def _ensure_connection(self):
+        if not HAS_SERIAL:
+            raise RuntimeError('pyserial is not installed. Run pip install -r requirements.txt')
+
+        if self._serial is not None and self._serial.is_open:
+            return
+
+        self._serial = serial.Serial(self.port, self.baud_rate, timeout=1)
+
+    def send_direction(self, direction):
+        direction_upper = direction.upper()
+        if direction_upper not in {'UP', 'DOWN'}:
+            raise ValueError('Direction must be either "up" or "down"')
+
+        with self._lock:
+            self._ensure_connection()
+            self._serial.write(f'{direction_upper}\n'.encode('utf-8'))
+            self._serial.flush()
+            self._last_direction = direction_upper
+
+    def stop(self):
+        with self._lock:
+            self._ensure_connection()
+            self._serial.write(b'STOP\n')
+            self._serial.flush()
+            self._last_direction = None
+
+    @property
+    def last_direction(self):
+        return self._last_direction
+
+
+motor_controller = ArduinoMotorController(ARDUINO_SERIAL_PORT, ARDUINO_BAUD_RATE)
 
 
 def parse_point(raw_value):
@@ -467,6 +520,32 @@ def get_ros_config():
         })
     except Exception:
         return jsonify({'rosbridge_host': 'localhost', 'rosbridge_port': 9090})
+
+
+@app.route('/api/motor/start', methods=['POST'])
+def start_motor():
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'Invalid direction. Use "up" or "down".'}), 400
+
+    try:
+        motor_controller.send_direction(direction)
+        return jsonify({'status': 'running', 'direction': direction})
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+    except Exception as error:
+        return jsonify({'error': f'Failed to send command to Arduino: {error}'}), 500
+
+
+@app.route('/api/motor/stop', methods=['POST'])
+def stop_motor():
+    try:
+        motor_controller.stop()
+        return jsonify({'status': 'stopped'})
+    except Exception as error:
+        return jsonify({'error': f'Failed to stop motor: {error}'}), 500
 
 
 if __name__ == '__main__':

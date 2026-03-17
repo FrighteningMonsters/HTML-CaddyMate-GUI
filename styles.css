@@ -19,7 +19,7 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     align-items: center;
     justify-content: space-between;
     padding: 24px;
@@ -29,6 +29,13 @@ body {
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
     width: 800px;
     height: 455px;
+}
+
+.motor-nav-button {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 1;
 }
 
 .logo-area {
@@ -56,10 +63,14 @@ h1 {
 .button-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 12px;
     width: 100%;
     flex: 1;
     justify-content: center;
+}
+
+.menu-button {
+    min-height: 96px;
 }
 
 button {
@@ -128,4 +139,21 @@ button:hover {
 
 button:active {
     background-color: #0052cc;
+}
+
+@media (max-width: 900px) {
+    .container {
+        width: min(100%, 700px);
+        height: auto;
+        min-height: 455px;
+    }
+
+    button {
+        font-size: 34px;
+        min-height: 92px;
+    }
+
+    .menu-button {
+        min-height: 84px;
+    }
 }
