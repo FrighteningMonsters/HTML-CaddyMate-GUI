@@ -58,6 +58,31 @@ The application uses SQLite database located at `data/caddymate_store.db` with t
 
 The `x_ros`, `y_ros`, `yaw_ros` columns store ROS map-frame coordinates for TurtleBot navigation. Items with these values show a Navigate button on the map page.
 
+### Items with navigation targets (current)
+
+Only the following items have ROS coordinates and show a target on the map page:
+
+| Item           | x (m) | y (m) | yaw (rad) |
+|----------------|------:|------:|----------:|
+| Apples         | -4.0  | 2.0   | 0.0       |
+| White bread    | -1.5  | 4.5   | 0.0       |
+| Whole milk     | 1.0   | 5.5   | 1.57      |
+| Chicken breast| 3.5   | 4.0   | 3.14      |
+| Frozen pizza   | 5.0   | 2.5   | 0.0       |
+| White rice     | 6.5   | 0.5   | 1.57      |
+| Crisps         | 5.0   | -1.5  | 3.14      |
+| Still water    | 3.0   | -3.0  | 0.0       |
+| Red wine       | 1.0   | -2.5  | 0.0       |
+| Ale            | 1.5   | -2.0  | 0.0       |
+| Toilet paper   | -1.5  | -2.0  | 1.57      |
+| Paracetamol    | -3.5  | -1.0  | 0.0       |
+| Shampoo        | -5.0  | 1.0   | 1.57      |
+| Nappies        | -3.0  | 4.0   | 0.0       |
+| Dog food       | 7.5   | 3.5   | 3.14      |
+| Hummus         | 0.0   | 0.5   | 0.0       |
+
+To add or update coordinates, edit `item_ros_coords` in `data/Database_Creator.py` and re-run the script.
+
 ## TurtleBot Integration
 
 When `lobby_final.pgm` and `lobby_final.yaml` (SLAM map) are in the project root, the map page loads the SLAM map and connects to ROS via rosbridge.
