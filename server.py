@@ -5,14 +5,14 @@ import os
 import json
 import heapq
 import threading
+import time
 from collections import deque
 
 try:
-    import serial
-    HAS_SERIAL = True
+    from smbus2 import SMBus, i2c_msg
+    HAS_I2C = True
 except ImportError:
-    serial = None
-    HAS_SERIAL = False
+    HAS_I2C = False
 
 try:
     from PIL import Image
@@ -29,8 +29,8 @@ SLAM_PGM_PATH = 'lobby_final.pgm'
 SLAM_YAML_PATH = 'lobby_final.yaml'
 SLAM_OUTPUT_PNG = 'lobby_map.png'
 ROS_CONFIG_PATH = 'ros_config.json'
-ARDUINO_SERIAL_PORT = os.getenv('ARDUINO_SERIAL_PORT', 'COM3') # TODO: check this
-ARDUINO_BAUD_RATE = int(os.getenv('ARDUINO_BAUD_RATE', '115200'))
+ARDUINO_I2C_ADDR = int(os.getenv('ARDUINO_I2C_ADDR', '0x08'), 16)
+ARDUINO_I2C_BUS = int(os.getenv('ARDUINO_I2C_BUS', '1'))
 
 # Cache for pathfinding grid
 _grid_cache = {
@@ -45,21 +45,27 @@ _grid_cache = {
 
 
 class ArduinoMotorController:
-    def __init__(self, port, baud_rate):
-        self.port = port
-        self.baud_rate = baud_rate
-        self._serial = None
+    def __init__(self, i2c_bus, i2c_addr):
+        self.i2c_bus = i2c_bus
+        self.i2c_addr = i2c_addr
+        self._bus = None
         self._lock = threading.Lock()
         self._last_direction = None
 
     def _ensure_connection(self):
-        if not HAS_SERIAL:
-            raise RuntimeError('pyserial is not installed. Run pip install -r requirements.txt')
+        if not HAS_I2C:
+            raise RuntimeError('smbus2 is not installed. Run pip install -r requirements.txt')
 
-        if self._serial is not None and self._serial.is_open:
-            return
+        if self._bus is None:
+            self._bus = SMBus(self.i2c_bus)
 
-        self._serial = serial.Serial(self.port, self.baud_rate, timeout=1)
+    def send_command(self, cmd):
+        """Send command via I2C"""
+        try:
+            msg = i2c_msg.write(self.i2c_addr, bytes(cmd, 'utf-8'))
+            self._bus.i2c_rdwr(msg)
+        except Exception as e:
+            raise RuntimeError(f'Failed to send I2C command: {e}')
 
     def send_direction(self, direction):
         direction_upper = direction.upper()
@@ -68,15 +74,13 @@ class ArduinoMotorController:
 
         with self._lock:
             self._ensure_connection()
-            self._serial.write(f'{direction_upper}\n'.encode('utf-8'))
-            self._serial.flush()
+            self.send_command(direction_upper)
             self._last_direction = direction_upper
 
     def stop(self):
         with self._lock:
             self._ensure_connection()
-            self._serial.write(b'STOP\n')
-            self._serial.flush()
+            self.send_command('STOP')
             self._last_direction = None
 
     @property
@@ -84,7 +88,7 @@ class ArduinoMotorController:
         return self._last_direction
 
 
-motor_controller = ArduinoMotorController(ARDUINO_SERIAL_PORT, ARDUINO_BAUD_RATE)
+motor_controller = ArduinoMotorController(ARDUINO_I2C_BUS, ARDUINO_I2C_ADDR)
 
 
 def parse_point(raw_value):
