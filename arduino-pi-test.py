@@ -1,10 +1,12 @@
-import smbus2, time
+from smbus2 import SMBus, i2c_msg
+import time
 
-bus = smbus2.SMBus(1)
+bus = SMBus(1)
 ADDR = 0x08
 
 def send_command(cmd):
-    bus.write_bytes(ADDR, bytes(cmd, 'utf-8'))  # <-- changed
+    msg = i2c_msg.write(ADDR, bytes(cmd, 'utf-8'))
+    bus.i2c_rdwr(msg)
 
 def send_command_for_duration(cmd, duration):
     end_time = time.time() + duration
