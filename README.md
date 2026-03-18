@@ -14,6 +14,37 @@ pip install -r requirements.txt
 python data/Database_Creator.py
 ```
 
+## Hardware Wiring (Pi → Arduino Uno via I2C)
+
+The Raspberry Pi controls the Dynamixel motor indirectly via the Arduino Uno over I2C. The Uno runs the DynamixelShield and receives velocity commands from the Pi.
+
+### Pin Connections
+
+| Raspberry Pi        | Arduino Uno | Purpose   |
+|---------------------|-------------|-----------|
+| Pin 3 (GPIO2 / SDA) | A4          | I2C Data  |
+| Pin 5 (GPIO3 / SCL) | A5          | I2C Clock |
+| Pin 6 (GND)         | GND         | Ground    |
+
+### DynamixelShield Switch
+
+The DynamixelShield has a slide switch that must be set correctly:
+
+- **UPLOAD** — connects Serial to USB; required when flashing a new sketch
+- **DXL** — connects Serial to the Dynamixel motor; required during normal operation
+
+Always switch back to **DXL** after uploading, or the motor will not respond.
+
+### I2C Commands
+
+The Pi sends raw UTF-8 bytes to I2C address `0x08`:
+
+| Command | Effect              |
+|---------|---------------------|
+| `UP`    | Spin forward (200)  |
+| `DOWN`  | Spin reverse (-200) |
+| `STOP`  | Stop motor (0)      |
+
 ## Running the Application
 
 1. Start the Flask server:
