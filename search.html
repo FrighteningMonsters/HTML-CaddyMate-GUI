@@ -214,19 +214,10 @@
 
         document.getElementById('searchInput').addEventListener('input', applySearch);
 
-        // Voice recognition
-        let recognition = null;
+        // Voice recognition (local Vosk via backend API)
         let isListening = false;
-
-        function buildSpeechGrammar(items) {
-            const ListClass = window.SpeechGrammarList || window.webkitSpeechGrammarList;
-            if (!ListClass || !items.length) return null;
-            const itemNames = items.map(i => i.name.toLowerCase()).join(' | ');
-            const grammar = `#JSGF V1.0; grammar items; public <item> = ${itemNames};`;
-            const list = new ListClass();
-            list.addFromString(grammar, 1);
-            return list;
-        }
+        let voicePollTimer = null;
+        let lastVoiceText = '';
 
         function setMicListening(listening) {
             isListening = listening;
@@ -236,96 +227,173 @@
             btn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Start voice input');
         }
 
-        function createRecognition() {
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRec) return null;
-
-            const rec = new SpeechRec();
-            rec.continuous = false;
-            rec.interimResults = true;
-            rec.lang = 'en-GB';
-            rec.maxAlternatives = 1;
-
-            const grammar = buildSpeechGrammar(allItems);
-            if (grammar) rec.grammars = grammar;
-
-            rec.onstart = () => {
-                console.log('[Voice] Recognition started');
-                setMicListening(true);
-            };
-
-            rec.onresult = (event) => {
-                const input = document.getElementById('searchInput');
-                let interim = '';
-                let final = '';
-
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        final += transcript;
-                    } else {
-                        interim += transcript;
-                    }
-                }
-
-                const text = (final || interim).trim().replace(/[.,!?;:'"]+$/g, '').trim();
-                console.log('[Voice] Result:', { isFinal: event.results[event.results.length - 1]?.isFinal, text });
-                input.value = text;
-                applySearch();
-            };
-
-            rec.onend = () => {
-                console.log('[Voice] Recognition ended');
-                setMicListening(false);
-                recognition = null;
-            };
-
-            rec.onerror = (event) => {
-                console.error('[Voice] Speech recognition error:', event.error);
-                setMicListening(false);
-                recognition = null;
-            };
-
-            return rec;
+        function clearVoicePolling() {
+            if (voicePollTimer !== null) {
+                window.clearInterval(voicePollTimer);
+                voicePollTimer = null;
+            }
         }
 
-        function toggleVoiceInput() {
+        function normalizeVoiceText(text) {
+            return String(text || '').trim().replace(/[.,!?;:'"]+$/g, '').trim();
+        }
+
+        function applyVoiceText(text) {
+            const normalized = normalizeVoiceText(text);
+            if (!normalized || normalized === lastVoiceText) {
+                return;
+            }
+
+            const input = document.getElementById('searchInput');
+            input.value = normalized;
+            lastVoiceText = normalized;
+            applySearch();
+        }
+
+        async function getJsonOrDefault(response) {
+            try {
+                return await response.json();
+            } catch (_error) {
+                return {};
+            }
+        }
+
+        async function pollVoiceStatus() {
+            const response = await fetch(`${API_URL}/voice/status`, { cache: 'no-store' });
+            const payload = await getJsonOrDefault(response);
+
+            if (!response.ok) {
+                throw new Error(payload.error || 'Voice status request failed');
+            }
+
+            if (payload.last_error) {
+                console.warn('[Voice] Status warning:', payload.last_error);
+            }
+
+            if (payload.partial_text) {
+                applyVoiceText(payload.partial_text);
+            } else if (payload.text) {
+                applyVoiceText(payload.text);
+            }
+
+            if (isListening && payload.running === false) {
+                setMicListening(false);
+                clearVoicePolling();
+                if (payload.final_text) {
+                    applyVoiceText(payload.final_text);
+                }
+            }
+
+            return payload;
+        }
+
+        async function startVoiceInput() {
+            const response = await fetch(`${API_URL}/voice/start`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({}),
+            });
+
+            const payload = await getJsonOrDefault(response);
+            if (!response.ok) {
+                throw new Error(payload.error || payload.last_error || 'Failed to start local voice input');
+            }
+
+            console.log('[Voice] Local voice recognition started', payload);
+            lastVoiceText = '';
+            setMicListening(true);
+            clearVoicePolling();
+            voicePollTimer = window.setInterval(() => {
+                pollVoiceStatus().catch((error) => {
+                    console.error('[Voice] Poll failed:', error);
+                });
+            }, 250);
+
+            await pollVoiceStatus();
+        }
+
+        async function stopVoiceInput() {
+            clearVoicePolling();
+
+            try {
+                const response = await fetch(`${API_URL}/voice/stop`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({}),
+                    keepalive: true,
+                });
+
+                const payload = await getJsonOrDefault(response);
+                if (!response.ok) {
+                    throw new Error(payload.error || payload.last_error || 'Failed to stop local voice input');
+                }
+
+                if (payload.final_text) {
+                    applyVoiceText(payload.final_text);
+                } else if (payload.text) {
+                    applyVoiceText(payload.text);
+                }
+
+                console.log('[Voice] Local voice recognition stopped', payload);
+            } finally {
+                setMicListening(false);
+            }
+        }
+
+        async function toggleVoiceInput() {
             if (isListening) {
-                console.log('[Voice] Stopping recognition');
-                if (recognition) {
-                    recognition.abort();
-                    recognition = null;
-                }
-                setMicListening(false);
+                await stopVoiceInput();
                 return;
             }
 
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRec) {
-                console.error('[Voice] Speech Recognition API not available');
-                alert('Voice recognition is not supported in this browser.');
-                return;
-            }
+            await startVoiceInput();
+        }
 
-            console.log('[Voice] Starting recognition');
-            // Clean up any existing recognition first
-            if (recognition) {
-                recognition.abort();
-            }
-            
-            recognition = createRecognition();
-            if (recognition) {
-                try {
-                    recognition.start();
-                } catch (error) {
-                    console.error('[Voice] Failed to start recognition:', error);
-                    setMicListening(false);
-                    recognition = null;
+        async function initializeVoiceButton() {
+            const micButton = document.getElementById('micToggle');
+
+            try {
+                const response = await fetch(`${API_URL}/voice/status`, { cache: 'no-store' });
+                const payload = await getJsonOrDefault(response);
+
+                if (!response.ok || payload.available === false) {
+                    const reason = payload.error || payload.last_error || 'Local voice input is unavailable.';
+                    micButton.disabled = true;
+                    micButton.title = reason;
+                    micButton.setAttribute('aria-label', reason);
+                    console.warn('[Voice] Mic button disabled:', reason);
                 }
+            } catch (error) {
+                micButton.disabled = true;
+                micButton.title = 'Voice API unavailable';
+                micButton.setAttribute('aria-label', 'Voice API unavailable');
+                console.warn('[Voice] Mic button disabled (status check failed):', error);
             }
         }
 
-        document.getElementById('micToggle').addEventListener('click', toggleVoiceInput);
+        window.addEventListener('beforeunload', () => {
+            if (!isListening) {
+                return;
+            }
+
+            clearVoicePolling();
+            fetch(`${API_URL}/voice/stop`, {
+                method: 'POST',
+                keepalive: true,
+            }).catch(() => {});
+        });
+
+        document.getElementById('micToggle').addEventListener('click', () => {
+            toggleVoiceInput().catch((error) => {
+                console.error('[Voice] Toggle failed:', error);
+                setMicListening(false);
+                alert(`Voice input failed: ${error.message}`);
+            });
+        });
 
         function setKeyboardExpanded(isExpanded) {
             const keyboard = document.getElementById('touchKeyboard');
@@ -418,6 +486,7 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             await loadAllItems();
+            await initializeVoiceButton();
             document.getElementById('searchInput').focus();
             setKeyboardExpanded(true);
         });

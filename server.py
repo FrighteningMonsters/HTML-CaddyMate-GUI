@@ -7,6 +7,7 @@ import heapq
 import threading
 import time
 from collections import deque
+from voice_to_text import VoiceToText
 
 try:
     from smbus2 import SMBus, i2c_msg
@@ -31,6 +32,16 @@ SLAM_OUTPUT_PNG = 'lobby_map.png'
 ROS_CONFIG_PATH = 'ros_config.json'
 ARDUINO_I2C_ADDR = int(os.getenv('ARDUINO_I2C_ADDR', '0x08'), 16)
 ARDUINO_I2C_BUS = int(os.getenv('ARDUINO_I2C_BUS', '1'))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VOICE_MODEL_PATH = os.path.join(BASE_DIR, 'resources', 'vosk-model-small-en-us-0.15')
+VOICE_USE_GRAMMAR = os.getenv('VOICE_USE_GRAMMAR', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+_raw_voice_device = os.getenv('VOICE_DEVICE', '').strip()
+if _raw_voice_device == '':
+    VOICE_DEVICE = None
+elif _raw_voice_device.lstrip('-').isdigit():
+    VOICE_DEVICE = int(_raw_voice_device)
+else:
+    VOICE_DEVICE = _raw_voice_device
 
 # Cache for pathfinding grid
 _grid_cache = {
@@ -89,6 +100,12 @@ class ArduinoMotorController:
 
 
 motor_controller = ArduinoMotorController(ARDUINO_I2C_BUS, ARDUINO_I2C_ADDR)
+voice_to_text = VoiceToText(
+    model_path=VOICE_MODEL_PATH,
+    db_path=DB_PATH,
+    device=VOICE_DEVICE,
+    use_grammar=VOICE_USE_GRAMMAR,
+)
 
 
 def parse_point(raw_value):
@@ -524,6 +541,51 @@ def get_ros_config():
         })
     except Exception:
         return jsonify({'rosbridge_host': 'localhost', 'rosbridge_port': 9090})
+
+
+def build_voice_status_payload():
+    payload = voice_to_text.get_status()
+    payload['available'] = voice_to_text.is_available()
+    availability_error = voice_to_text.availability_error()
+    if availability_error and not payload.get('last_error'):
+        payload['last_error'] = availability_error
+    return payload
+
+
+@app.route('/api/voice/status')
+def get_voice_status():
+    return jsonify(build_voice_status_payload())
+
+
+@app.route('/api/voice/start', methods=['POST'])
+def start_voice_input():
+    availability_error = voice_to_text.availability_error()
+    if availability_error:
+        payload = build_voice_status_payload()
+        payload['error'] = availability_error
+        return jsonify(payload), 503
+
+    started = voice_to_text.start()
+    payload = build_voice_status_payload()
+
+    if not started:
+        payload['error'] = payload.get('last_error') or 'Failed to start local speech recognition.'
+        return jsonify(payload), 500
+
+    payload['state'] = 'running'
+    return jsonify(payload)
+
+
+@app.route('/api/voice/stop', methods=['POST'])
+def stop_voice_input():
+    try:
+        final_text = voice_to_text.stop()
+        payload = build_voice_status_payload()
+        payload['state'] = 'stopped'
+        payload['final_text'] = final_text or payload.get('final_text', '')
+        return jsonify(payload)
+    except Exception as error:
+        return jsonify({'error': f'Failed to stop local speech recognition: {error}'}), 500
 
 
 @app.route('/api/motor/start', methods=['POST'])
