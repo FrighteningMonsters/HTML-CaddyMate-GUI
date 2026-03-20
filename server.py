@@ -62,6 +62,7 @@ class ArduinoMotorController:
         self._bus = None
         self._lock = threading.Lock()
         self._last_direction = None
+        self._last_mode = 'MANUAL'
 
     def _ensure_connection(self):
         if not HAS_I2C:
@@ -94,9 +95,23 @@ class ArduinoMotorController:
             self.send_command('STOP')
             self._last_direction = None
 
+    def send_mode(self, mode_command):
+        mode_upper = mode_command.upper()
+        if mode_upper not in {'MANUAL', 'LOAD', 'UNLOAD'}:
+            raise ValueError('Mode must be one of "manual", "loading", or "unloading"')
+
+        with self._lock:
+            self._ensure_connection()
+            self.send_command(mode_upper)
+            self._last_mode = mode_upper
+
     @property
     def last_direction(self):
         return self._last_direction
+
+    @property
+    def last_mode(self):
+        return self._last_mode
 
 
 motor_controller = ArduinoMotorController(ARDUINO_I2C_BUS, ARDUINO_I2C_ADDR)
@@ -612,6 +627,30 @@ def stop_motor():
         return jsonify({'status': 'stopped'})
     except Exception as error:
         return jsonify({'error': f'Failed to stop motor: {error}'}), 500
+
+
+@app.route('/api/motor/mode', methods=['POST'])
+def set_motor_mode():
+    payload = request.get_json(silent=True) or {}
+    mode = (payload.get('mode') or '').strip().lower()
+
+    mode_command_map = {
+        'manual': 'MANUAL',
+        'loading': 'LOAD',
+        'unloading': 'UNLOAD',
+    }
+
+    mode_command = mode_command_map.get(mode)
+    if mode_command is None:
+        return jsonify({'error': 'Invalid mode. Use "manual", "loading", or "unloading".'}), 400
+
+    try:
+        motor_controller.send_mode(mode_command)
+        return jsonify({'status': 'ok', 'mode': mode})
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+    except Exception as error:
+        return jsonify({'error': f'Failed to set motor mode: {error}'}), 500
 
 
 if __name__ == '__main__':

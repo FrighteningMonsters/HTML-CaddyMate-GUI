@@ -16,6 +16,30 @@
             <h1>Motor Control</h1>
         </div>
 
+        <div class="mode-controls" role="group" aria-label="Select motor mode">
+            <button
+                type="button"
+                class="mode-button is-active"
+                data-mode="manual"
+            >
+                Manual
+            </button>
+            <button
+                type="button"
+                class="mode-button"
+                data-mode="loading"
+            >
+                Loading
+            </button>
+            <button
+                type="button"
+                class="mode-button"
+                data-mode="unloading"
+            >
+                Unloading
+            </button>
+        </div>
+
         <div class="motor-controls" role="group" aria-label="Move base up or down">
             <button
                 type="button"
@@ -41,8 +65,17 @@
     <script>
         (function () {
             const statusEl = document.getElementById('motor-status');
+            const modeButtons = document.querySelectorAll('.mode-button');
             const directionButtons = document.querySelectorAll('.direction-button');
             let activeDirection = null;
+            let activeMode = 'manual';
+            let modeChangeInFlight = false;
+
+            const MODE_LABELS = {
+                manual: 'Manual',
+                loading: 'Loading',
+                unloading: 'Unloading',
+            };
 
             function setStatus(message, isError) {
                 statusEl.textContent = message;
@@ -65,6 +98,53 @@
                 if (!response.ok) {
                     const payload = await response.json().catch(function () { return {}; });
                     throw new Error(payload.error || 'Motor command failed');
+                }
+            }
+
+            async function sendMotorMode(mode) {
+                const response = await fetch('/api/motor/mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mode: mode }),
+                });
+
+                if (!response.ok) {
+                    const payload = await response.json().catch(function () { return {}; });
+                    throw new Error(payload.error || 'Mode change failed');
+                }
+            }
+
+            function setActiveMode(mode) {
+                modeButtons.forEach(function (button) {
+                    button.classList.toggle('is-active', button.dataset.mode === mode);
+                });
+            }
+
+            function setModeStatus(mode) {
+                modeStatusEl.textContent = 'Mode: ' + (MODE_LABELS[mode] || mode);
+            }
+
+            async function handleModeSelect(mode) {
+                if (modeChangeInFlight || mode === activeMode) {
+                    return;
+                }
+
+                const previousMode = activeMode;
+                modeChangeInFlight = true;
+                setActiveMode(mode);
+
+                try {
+                    await sendMotorMode(mode);
+                    activeMode = mode;
+                    setModeStatus(mode);
+                } catch (error) {
+                    setActiveMode(previousMode);
+                    setModeStatus(previousMode);
+                    setStatus(error.message, true);
+                } finally {
+                    modeChangeInFlight = false;
                 }
             }
 
@@ -131,6 +211,16 @@
                     event.preventDefault();
                 });
             });
+
+            modeButtons.forEach(function (button) {
+                const mode = button.dataset.mode;
+
+                button.addEventListener('click', function () {
+                    handleModeSelect(mode);
+                });
+            });
+
+            setModeStatus(activeMode);
 
             document.addEventListener('visibilitychange', function () {
                 if (document.hidden && activeDirection !== null) {

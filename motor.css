@@ -2,6 +2,7 @@
     justify-content: flex-start;
     gap: 20px;
     padding-top: 20px;
+    padding-bottom: 20px;
 }
 
 .header {
@@ -21,6 +22,41 @@
     margin: 0;
 }
 
+.mode-controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.mode-button {
+    min-height: 64px;
+    border-radius: 12px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    background-color: #9ca3af;
+    border: 2px solid #6b7280;
+}
+
+.mode-button:not(.is-active),
+.mode-button:not(.is-active):hover,
+.mode-button:not(.is-active):active {
+    background-color: #9ca3af;
+    border-color: #6b7280;
+}
+
+.mode-button.is-active {
+    background-color: #0b67df;
+    border-color: #0048b3;
+}
+
+.mode-button.is-active:hover,
+.mode-button.is-active:active {
+    background-color: #0b67df;
+    border-color: #0048b3;
+}
+
 .motor-controls {
     width: 100%;
     flex: 1;
@@ -31,7 +67,7 @@
 }
 
 .direction-button {
-    min-height: 240px;
+    min-height: 210px;
     border-radius: 16px;
     font-size: 120px;
     font-weight: 700;
@@ -66,6 +102,15 @@
 }
 
 @media (max-width: 900px) {
+    .mode-controls {
+        gap: 10px;
+    }
+
+    .mode-button {
+        min-height: 56px;
+        font-size: 18px;
+    }
+
     .motor-controls {
         gap: 14px;
     }
