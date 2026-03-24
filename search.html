@@ -69,8 +69,7 @@
 
     <script>
         const API_URL = 'http://localhost:5000/api';
-        const SEARCH_ITEMS_CACHE_KEY = 'search-items-cache-v1';
-        const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+        const SEARCH_ITEMS_CACHE_KEY = 'search-items-cache-v2';
 
         let allItems = [];
 
@@ -94,11 +93,14 @@
             }));
         }
 
-        function openItemOnMap(itemName, aisle, aislePosition) {
+        function openItemOnMap(itemName, aisle, aislePosition, xRos, yRos, yawRos) {
             const payload = {
                 item: itemName || '',
                 aisle: aisle || '',
-                aisle_position: aislePosition || ''
+                aisle_position: aislePosition || '',
+                x_ros: xRos,
+                y_ros: yRos,
+                yaw_ros: yawRos
             };
 
             sessionStorage.setItem('mapTarget', JSON.stringify(payload));
@@ -108,6 +110,15 @@
                 aisle: aisle || '',
                 aisle_position: aislePosition || ''
             });
+            if (xRos != null && xRos !== '' && !isNaN(parseFloat(xRos))) {
+                query.set('x_ros', String(xRos));
+            }
+            if (yRos != null && yRos !== '' && !isNaN(parseFloat(yRos))) {
+                query.set('y_ros', String(yRos));
+            }
+            if (yawRos != null && yawRos !== '' && !isNaN(parseFloat(yawRos))) {
+                query.set('yaw_ros', String(yawRos));
+            }
 
             window.location.href = `map.html?${query.toString()}`;
         }
@@ -116,7 +127,10 @@
             return {
                 name: item.name || '',
                 aisle: item.aisle || '',
-                aisle_position: item.aisle_position ?? ''
+                aisle_position: item.aisle_position ?? '',
+                x_ros: item.x_ros,
+                y_ros: item.y_ros,
+                yaw_ros: item.yaw_ros
             };
         }
 
@@ -157,7 +171,7 @@
             }
 
             container.innerHTML = items.map(item => `
-                <button class="result-button" data-item-name="${encodeURIComponent(item.name)}" data-item-aisle="${encodeURIComponent(item.aisle || '')}" data-item-aisle-position="${encodeURIComponent(item.aisle_position ?? '')}">
+                <button class="result-button" data-item-name="${encodeURIComponent(item.name)}" data-item-aisle="${encodeURIComponent(item.aisle || '')}" data-item-aisle-position="${encodeURIComponent(item.aisle_position ?? '')}" data-item-x-ros="${item.x_ros != null ? encodeURIComponent(String(item.x_ros)) : ''}" data-item-y-ros="${item.y_ros != null ? encodeURIComponent(String(item.y_ros)) : ''}" data-item-yaw-ros="${item.yaw_ros != null ? encodeURIComponent(String(item.yaw_ros)) : ''}">
                     <span class="result-name">${item.name}</span>
                     ${item.aisle ? `<span class="result-aisle">Aisle ${item.aisle}</span>` : ''}
                 </button>
@@ -189,13 +203,10 @@
 
             if (cached?.value) {
                 allItems = cached.value.map(normalizeItemRow);
-                if (Date.now() - cached.savedAt < SEARCH_CACHE_TTL_MS) {
-                    return;
-                }
             }
 
             try {
-                const response = await fetch(`${API_URL}/items`, { cache: 'force-cache' });
+                const response = await fetch(`${API_URL}/items`, { cache: 'no-store' });
 
                 if (!response.ok) {
                     throw new Error('Failed to fetch items');
@@ -204,6 +215,7 @@
                 const items = await response.json();
                 allItems = items.map(normalizeItemRow);
                 writeCache(SEARCH_ITEMS_CACHE_KEY, allItems);
+                applySearch();
             } catch (error) {
                 console.error('Error loading search items:', error);
                 if (!allItems.length) {
@@ -481,7 +493,10 @@
             const itemName = decodeURIComponent(button.dataset.itemName || '');
             const aisle = decodeURIComponent(button.dataset.itemAisle || '');
             const aislePosition = decodeURIComponent(button.dataset.itemAislePosition || '');
-            openItemOnMap(itemName, aisle, aislePosition);
+            const xRos = button.dataset.itemXRos != null && button.dataset.itemXRos !== '' ? button.dataset.itemXRos : null;
+            const yRos = button.dataset.itemYRos != null && button.dataset.itemYRos !== '' ? button.dataset.itemYRos : null;
+            const yawRos = button.dataset.itemYawRos != null && button.dataset.itemYawRos !== '' ? button.dataset.itemYawRos : null;
+            openItemOnMap(itemName, aisle, aislePosition, xRos, yRos, yawRos);
         });
 
         window.addEventListener('DOMContentLoaded', async () => {

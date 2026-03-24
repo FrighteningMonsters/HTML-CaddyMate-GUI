@@ -143,7 +143,6 @@
 
       let targetWorldPoint = null;
       let targetMarker = null;
-      let targetLabel = null;
       let routeLine = null;
       let hasReachedTarget = false;
 
@@ -234,10 +233,6 @@
             targetMarker.destroy();
             targetMarker = null;
           }
-          if (targetLabel) {
-            targetLabel.destroy();
-            targetLabel = null;
-          }
           return;
         }
 
@@ -252,30 +247,9 @@
           targetMarker.moveToTop();
         }
 
-        if (!targetLabel) {
-          const aisleDisplay = formatAisleDisplay(selectedAisleLabel);
-          const labelText = selectedItemName
-            ? `${selectedItemName} (${aisleDisplay})`
-            : `Target ${aisleDisplay}`;
-          targetLabel = new Konva.Text({
-            text: labelText,
-            fontSize: 22,
-            fill: "#065f46",
-            align: "center",
-            width: 280,
-          });
-          layer.add(targetLabel);
-          targetLabel.moveToTop();
-        }
-
         targetMarker.position({
           x: targetWorldPoint.x,
           y: targetWorldPoint.y,
-        });
-
-        targetLabel.position({
-          x: targetWorldPoint.x - 140,
-          y: targetWorldPoint.y - 54,
         });
       }
 
@@ -289,7 +263,6 @@
       function showMapUnavailablePlaceholder() {
         layer.destroyChildren();
         targetMarker = null;
-        targetLabel = null;
         routeLine = null;
         targetWorldPoint = null;
         const w = stage.width();
@@ -354,7 +327,6 @@
         PIXELS_PER_METER = 1;
         layer.destroyChildren();
         targetMarker = null;
-        targetLabel = null;
         routeLine = null;
         hasReachedTarget = false;
         const mapRect = new Konva.Rect({
@@ -460,7 +432,6 @@
                     });
                     layer.add(routeLine);
                     if (targetMarker) targetMarker.moveToTop();
-                    if (targetLabel) targetLabel.moveToTop();
                   }
                   layer.batchDraw();
                 } else if (routeLine) {

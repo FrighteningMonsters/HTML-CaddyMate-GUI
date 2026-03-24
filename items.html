@@ -23,7 +23,6 @@
     <script>
         const API_URL = 'http://localhost:5000/api';
         const ITEMS_CACHE_PREFIX = 'items-cache-v2-';
-        const ITEMS_CACHE_TTL_MS = 5 * 60 * 1000;
 
         const urlParams = new URLSearchParams(window.location.search);
         const categoryId = urlParams.get('category');
@@ -102,13 +101,12 @@
 
             if (cached?.value) {
                 renderItems(container, cached.value);
-                if (Date.now() - cached.savedAt < ITEMS_CACHE_TTL_MS) {
-                    return;
-                }
+            } else {
+                container.innerHTML = '<div class="loading">Loading items...</div>';
             }
 
             try {
-                const response = await fetch(`${API_URL}/items/${categoryId}`, { cache: 'force-cache' });
+                const response = await fetch(`${API_URL}/items/${categoryId}`, { cache: 'no-store' });
 
                 if (!response.ok) {
                     throw new Error('Failed to fetch items');

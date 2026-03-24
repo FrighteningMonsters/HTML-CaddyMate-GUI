@@ -415,6 +415,13 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+def json_no_store(payload):
+    resp = jsonify(payload)
+    resp.headers['Cache-Control'] = 'no-store, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
+
 @app.route('/')
 def index():
     return send_from_directory('.', 'home.html')
@@ -430,7 +437,7 @@ def get_categories():
     cursor.execute('SELECT * FROM categories ORDER BY name')
     categories = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify(categories)
+    return json_no_store(categories)
 
 @app.route('/api/items/<int:category_id>')
 def get_items_by_category(category_id):
@@ -439,7 +446,7 @@ def get_items_by_category(category_id):
     cursor.execute('SELECT * FROM items WHERE category_id = ? ORDER BY name', (category_id,))
     items = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify(items)
+    return json_no_store(items)
 
 @app.route('/api/items')
 def get_all_items():
@@ -448,7 +455,7 @@ def get_all_items():
     cursor.execute('SELECT * FROM items ORDER BY name')
     items = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify(items)
+    return json_no_store(items)
 
 @app.route('/api/path', methods=['POST'])
 def get_path():
