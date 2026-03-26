@@ -2,6 +2,7 @@ Flask==3.0.0
 flask-cors==4.0.0
 Pillow>=10.0.0
 pyserial>=3.5
+dynamixel-sdk>=3.7.31
 smbus2>=0.4.3
 numpy>=1.24.0
 sounddevice>=0.4.6

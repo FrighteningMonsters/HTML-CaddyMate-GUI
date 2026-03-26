@@ -5,10 +5,10 @@ import os
 import json
 import heapq
 import threading
-import time
+import atexit
 from collections import deque
 from voice_to_text import VoiceToText
-import serial
+from dynamixel_sdk import COMM_SUCCESS, PacketHandler, PortHandler
 
 try:
     from PIL import Image
@@ -48,56 +48,127 @@ _grid_cache = {
 }
 
 
-class ArduinoMotorController:
-    def __init__(self, port='/dev/ttyACM0', baudrate=115200):
-        self.port = port
+class DynamixelMotorController:
+    ADDR_TORQUE_ENABLE = 64
+    ADDR_GOAL_VELOCITY = 104
+    ADDR_PROFILE_ACCEL = 108
+    ADDR_OPERATING_MODE = 11
+    OPERATING_MODE_VELOCITY = 1
+    PROTOCOL_VERSION = 2.0
+
+    def __init__(
+        self,
+        device_name,
+        baudrate=1000000,
+        dxl_id=1,
+        speed_up=-256,
+        speed_down=256,
+        profile_accel=30,
+    ):
+        self.device_name = device_name
         self.baudrate = baudrate
-        self._ser = None
+        self.dxl_id = dxl_id
+        self.speed_up = speed_up
+        self.speed_down = speed_down
+        self.profile_accel = profile_accel
         self._lock = threading.Lock()
+        self._connected = False
+        self._closed = False
         self._last_direction = None
         self._last_mode = 'MANUAL'
+        self._port_handler = PortHandler(self.device_name)
+        self._packet_handler = PacketHandler(self.PROTOCOL_VERSION)
 
     def _ensure_connection(self):
-        """Open serial port if not already open."""
-        if self._ser is None or not self._ser.is_open:
-            try:
-                self._ser = serial.Serial(self.port, self.baudrate, timeout=1)
-                time.sleep(2)  # Wait for Arduino R4 to reboot
-                print(f"Connected to Arduino on {self.port}")
-            except Exception as e:
-                self._ser = None
-                raise RuntimeError(f"Could not open serial port {self.port}: {e}")
+        if self._closed:
+            raise RuntimeError('Motor controller is closed.')
+        if self._connected:
+            return
 
-    def send_command(self, cmd):
-        """Send a string command followed by a newline to the Arduino."""
+        if not self._port_handler.openPort():
+            raise RuntimeError(f'Could not open Dynamixel port {self.device_name}.')
+
+        if not self._port_handler.setBaudRate(self.baudrate):
+            self._port_handler.closePort()
+            raise RuntimeError(f'Could not set Dynamixel baudrate {self.baudrate}.')
+
+        self._write1(self.ADDR_OPERATING_MODE, self.OPERATING_MODE_VELOCITY)
+        self._write4(self.ADDR_PROFILE_ACCEL, self.profile_accel)
+        self._write1(self.ADDR_TORQUE_ENABLE, 1)
+        self._connected = True
+        print(f'Connected to Dynamixel on {self.device_name}')
+
+    def _write1(self, address, value):
+        dxl_comm_result, dxl_error = self._packet_handler.write1ByteTxRx(
+            self._port_handler,
+            self.dxl_id,
+            address,
+            int(value),
+        )
+        if dxl_comm_result != COMM_SUCCESS:
+            raise RuntimeError(self._packet_handler.getTxRxResult(dxl_comm_result))
+        if dxl_error != 0:
+            raise RuntimeError(self._packet_handler.getRxPacketError(dxl_error))
+
+    def _write4(self, address, value):
+        write_value = int(value)
+        if write_value < 0:
+            write_value = (1 << 32) + write_value
+        dxl_comm_result, dxl_error = self._packet_handler.write4ByteTxRx(
+            self._port_handler,
+            self.dxl_id,
+            address,
+            write_value,
+        )
+        if dxl_comm_result != COMM_SUCCESS:
+            raise RuntimeError(self._packet_handler.getTxRxResult(dxl_comm_result))
+        if dxl_error != 0:
+            raise RuntimeError(self._packet_handler.getRxPacketError(dxl_error))
+
+    def set_velocity(self, velocity):
         with self._lock:
             self._ensure_connection()
-            try:
-                # Add newline because Arduino uses readStringUntil('\n')
-                full_cmd = f"{cmd}\n"
-                self._ser.write(full_cmd.encode('utf-8'))
-                self._ser.flush() # Ensure it's sent immediately
-                print(f"Serial Sent: {cmd}")
-            except Exception as e:
-                self._ser = None # Reset connection on failure
-                raise RuntimeError(f"Failed to send Serial command: {e}")
+            self._write4(self.ADDR_GOAL_VELOCITY, velocity)
 
     def send_direction(self, direction):
         direction_upper = direction.upper()
         if direction_upper not in {'UP', 'DOWN'}:
             raise ValueError('Direction must be either "up" or "down"')
-        
-        self.send_command(direction_upper)
+
+        velocity = self.speed_up if direction_upper == 'UP' else self.speed_down
+        self.set_velocity(velocity)
         self._last_direction = direction_upper
 
     def stop(self):
-        self.send_command('STOP')
+        self.set_velocity(0)
         self._last_direction = None
 
     def send_mode(self, mode_command):
-        # mode_command is already uppercase from the Flask route mapping
-        self.send_command(mode_command)
+        if mode_command not in {'MANUAL', 'LOAD', 'UNLOAD'}:
+            raise ValueError('Invalid mode command.')
         self._last_mode = mode_command
+
+    def close(self):
+        with self._lock:
+            if self._closed:
+                return
+
+            if self._connected:
+                try:
+                    self._write4(self.ADDR_GOAL_VELOCITY, 0)
+                except Exception:
+                    pass
+                try:
+                    self._write1(self.ADDR_TORQUE_ENABLE, 0)
+                except Exception:
+                    pass
+                try:
+                    self._port_handler.closePort()
+                except Exception:
+                    pass
+
+            self._connected = False
+            self._closed = True
 
     @property
     def last_direction(self):
@@ -108,8 +179,30 @@ class ArduinoMotorController:
         return self._last_mode
 
 
-ARDUINO_SERIAL_PORT = os.getenv('ARDUINO_PORT', '/dev/ttyACM0')
-motor_controller = ArduinoMotorController(port=ARDUINO_SERIAL_PORT, baudrate=115200)
+def resolve_dynamixel_port():
+    configured_port = os.getenv('DYNAMIXEL_PORT', '').strip()
+    if configured_port:
+        return configured_port
+
+    for candidate in ('/dev/ttyUSB0', '/dev/ttyUSB1'):
+        if os.path.exists(candidate):
+            return candidate
+
+    return 'COM13'
+
+
+DYNAMIXEL_PORT = resolve_dynamixel_port()
+motor_controller = DynamixelMotorController(device_name=DYNAMIXEL_PORT)
+
+
+def shutdown_motor_controller():
+    try:
+        motor_controller.close()
+    except Exception as error:
+        print(f'Failed to close motor controller cleanly: {error}')
+
+
+atexit.register(shutdown_motor_controller)
 voice_to_text = VoiceToText(
     model_path=VOICE_MODEL_PATH,
     db_path=DB_PATH,
