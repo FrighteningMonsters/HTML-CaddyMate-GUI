@@ -91,7 +91,7 @@ class DynamixelMotorController:
         if not self._port_handler.setBaudRate(self.baudrate):
             self._port_handler.closePort()
             raise RuntimeError(f'Could not set Dynamixel baudrate {self.baudrate}.')
-
+        self._write1(self.ADDR_TORQUE_ENABLE, 0)
         self._write1(self.ADDR_OPERATING_MODE, self.OPERATING_MODE_VELOCITY)
         self._write4(self.ADDR_PROFILE_ACCEL, self.profile_accel)
         self._write1(self.ADDR_TORQUE_ENABLE, 1)
