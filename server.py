@@ -10,8 +10,14 @@ import re
 from collections import deque
 from voice_to_text import VoiceToText
 from dynamixel_sdk import COMM_SUCCESS, PacketHandler, PortHandler
-import termios
 import time
+
+try:
+    import termios
+    HAS_TERMIOS = True
+except ImportError:
+    termios = None
+    HAS_TERMIOS = False
 
 try:
     import serial
@@ -62,6 +68,9 @@ class DynamixelMotorController:
     ADDR_GOAL_VELOCITY = 104
     ADDR_PROFILE_ACCEL = 108
     ADDR_OPERATING_MODE = 11
+    ADDR_MAX_POSITION_LIMIT = 48
+    ADDR_MIN_POSITION_LIMIT = 52
+    ADDR_PRESENT_POSITION = 132
     OPERATING_MODE_VELOCITY = 1
     PROTOCOL_VERSION = 2.0
 
@@ -73,6 +82,8 @@ class DynamixelMotorController:
         speed_up=-256,
         speed_down=256,
         profile_accel=30,
+        top_to_bottom_ticks=12000,
+        down_increases_position=True,
     ):
         self.device_name = device_name
         self.baudrate = baudrate
@@ -80,15 +91,31 @@ class DynamixelMotorController:
         self.speed_up = speed_up
         self.speed_down = speed_down
         self.profile_accel = profile_accel
+        self.top_to_bottom_ticks = max(0, int(top_to_bottom_ticks))
+        self.down_increases_position = bool(down_increases_position)
         self._lock = threading.Lock()
         self._connected = False
         self._closed = False
         self._last_direction = None
         self._last_mode = 'MANUAL'
+        self._top_position = None
+        self._bottom_position = None
+        self._configured_min_limit = None
+        self._configured_max_limit = None
         self._port_handler = PortHandler(self.device_name)
         self._packet_handler = PacketHandler(self.PROTOCOL_VERSION)
 
     def _flush(self):
+
+        if not HAS_TERMIOS:
+            if hasattr(self._port_handler, 'ser') and self._port_handler.ser is not None:
+                try:
+                    self._port_handler.ser.reset_input_buffer()
+                    self._port_handler.ser.reset_output_buffer()
+                except Exception:
+                    pass
+            return
+
         if hasattr(self._port_handler, 'fd') and self._port_handler.fd is not None:
             termios.tcflush(self._port_handler.fd, termios.TCIOFLUSH)
 
@@ -117,6 +144,9 @@ class DynamixelMotorController:
         
         time.sleep(0.1) # Give the motor a moment to process
 
+        # Capture top at startup and set hardware min/max limits.
+        self._configure_position_limits_from_top()
+
         # 3. Set Operating Mode (Velocity)
         self._write1(self.ADDR_OPERATING_MODE, self.OPERATING_MODE_VELOCITY)
         
@@ -128,6 +158,11 @@ class DynamixelMotorController:
         
         self._connected = True
         print(f'Connected to Dynamixel on {self.device_name}')
+        print(
+            f'Position limits configured from top={self._top_position} '
+            f'-> bottom={self._bottom_position} '
+            f'(min={self._configured_min_limit}, max={self._configured_max_limit})'
+        )
 
     def _write1(self, address, value):
         self._flush() # Clean before every write
@@ -152,6 +187,44 @@ class DynamixelMotorController:
             raise RuntimeError(self._packet_handler.getTxRxResult(dxl_comm_result))
         if dxl_error != 0:
             raise RuntimeError(f"Motor Error at Addr {address}: {self._packet_handler.getRxPacketError(dxl_error)}")
+
+    def _read4(self, address):
+        self._flush() # Clean before every read
+        read_value, dxl_comm_result, dxl_error = self._packet_handler.read4ByteTxRx(
+            self._port_handler, self.dxl_id, address
+        )
+        if dxl_comm_result != COMM_SUCCESS:
+            raise RuntimeError(self._packet_handler.getTxRxResult(dxl_comm_result))
+        if dxl_error != 0:
+            raise RuntimeError(f"Motor Error at Addr {address}: {self._packet_handler.getRxPacketError(dxl_error)}")
+        return int(read_value)
+
+    def _to_signed_32(self, value):
+        if value & (1 << 31):
+            return value - (1 << 32)
+        return value
+
+    def _read_present_position(self):
+        raw_value = self._read4(self.ADDR_PRESENT_POSITION)
+        return self._to_signed_32(raw_value)
+
+    def _configure_position_limits_from_top(self):
+        top_position = self._read_present_position()
+        bottom_offset = self.top_to_bottom_ticks
+        if not self.down_increases_position:
+            bottom_offset = -bottom_offset
+        bottom_position = top_position + bottom_offset
+
+        min_limit = min(top_position, bottom_position)
+        max_limit = max(top_position, bottom_position)
+
+        self._write4(self.ADDR_MIN_POSITION_LIMIT, min_limit)
+        self._write4(self.ADDR_MAX_POSITION_LIMIT, max_limit)
+
+        self._top_position = top_position
+        self._bottom_position = bottom_position
+        self._configured_min_limit = min_limit
+        self._configured_max_limit = max_limit
 
     def set_velocity(self, velocity):
         with self._lock:
@@ -206,6 +279,32 @@ class DynamixelMotorController:
     def last_mode(self):
         return self._last_mode
 
+    def get_limit_state(self):
+        return {
+            'top_position': self._top_position,
+            'bottom_position': self._bottom_position,
+            'min_position_limit': self._configured_min_limit,
+            'max_position_limit': self._configured_max_limit,
+            'top_to_bottom_ticks': self.top_to_bottom_ticks,
+            'down_increases_position': self.down_increases_position,
+        }
+
+    def read_position_state(self):
+        with self._lock:
+            self._ensure_connection()
+            current_position = self._read_present_position()
+            top_position = self._top_position
+
+        offset_from_top = None
+        if top_position is not None:
+            offset_from_top = current_position - top_position
+
+        return {
+            'current_position': current_position,
+            'top_position': top_position,
+            'offset_from_top': offset_from_top,
+        }
+
 
 def resolve_dynamixel_port():
     configured_port = os.getenv('DYNAMIXEL_PORT', '').strip()
@@ -220,7 +319,59 @@ def resolve_dynamixel_port():
 
 
 DYNAMIXEL_PORT = resolve_dynamixel_port()
-motor_controller = DynamixelMotorController(device_name=DYNAMIXEL_PORT)
+MOTOR_TOP_TO_BOTTOM_TICKS = int(os.getenv('MOTOR_TOP_TO_BOTTOM_TICKS', '12000'))
+MOTOR_DOWN_INCREASES_POSITION = os.getenv('MOTOR_DOWN_INCREASES_POSITION', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+MOTOR_OFFSET_DEBUG_PRINT = os.getenv('MOTOR_OFFSET_DEBUG_PRINT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+MOTOR_OFFSET_DEBUG_INTERVAL_SECONDS = float(os.getenv('MOTOR_OFFSET_DEBUG_INTERVAL_SECONDS', '0.5'))
+motor_controller = DynamixelMotorController(
+    device_name=DYNAMIXEL_PORT,
+    top_to_bottom_ticks=MOTOR_TOP_TO_BOTTOM_TICKS,
+    down_increases_position=MOTOR_DOWN_INCREASES_POSITION,
+)
+
+
+class MotorOffsetCalibrationPrinter:
+    def __init__(self, motor_ctrl, interval_seconds=0.5):
+        self._motor = motor_ctrl
+        self._interval = max(0.1, float(interval_seconds))
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def _run_loop(self):
+        while not self._stop_event.is_set():
+            try:
+                state = self._motor.read_position_state()
+                print(
+                    '[Motor Cal] '
+                    f"current={state['current_position']} "
+                    f"top={state['top_position']} "
+                    f"offset_from_top={state['offset_from_top']}"
+                )
+            except Exception as error:
+                print(f'[Motor Cal] read failed: {error}')
+
+            self._stop_event.wait(self._interval)
+
+    def start(self):
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+
+
+motor_offset_calibration_printer = MotorOffsetCalibrationPrinter(
+    motor_controller,
+    interval_seconds=MOTOR_OFFSET_DEBUG_INTERVAL_SECONDS,
+)
+
+if MOTOR_OFFSET_DEBUG_PRINT:
+    motor_offset_calibration_printer.start()
 
 
 class MotorAutomationController:
@@ -503,6 +654,11 @@ ultrasonic_serial_reader.start()
 
 
 def shutdown_motor_controller():
+    try:
+        motor_offset_calibration_printer.stop()
+    except Exception as error:
+        print(f'Failed to stop motor calibration printer cleanly: {error}')
+
     try:
         ultrasonic_serial_reader.stop()
     except Exception as error:
